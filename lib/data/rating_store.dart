@@ -1,4 +1,4 @@
-﻿import 'models.dart';
+import 'models.dart';
 
 /// Хранилище оценок и наборов.
 ///
