@@ -1,0 +1,64 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Локальные артефакты разработки. Это не часть проекта: скриншоты
+# с устройства, дампы локальной БД, разборы UI и одноразовые скрипты.
+# В публичный репозиторий им нельзя — дампы БД содержат реальные
+# идентификаторы фото, а скриншоты — содержимое устройства.
+/*.png
+/*.xml
+/*.db
+/test_photos/
+/find_allow.py
+/find_paren.py
+/gen_photos.py
+/parse_ui.py
+/media.txt
+
+# Локальные пути SDK
+/android/local.properties
+/android/.kotlin/
+

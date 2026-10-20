@@ -1,0 +1,31 @@
+# Нормализация переводов строк: в репозитории всегда LF, независимо от
+# настроек машины. Без этого Windows-машины (autocrlf=true) записывают
+# CRLF, и diffы по чужим репозиториям засоряются целыми файлами.
+* text=auto eol=lf
+
+# Бинарные файлы не трогаем.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp4 binary
+*.ttf binary
+*.otf binary
+*.jar binary
+*.so binary
+*.aar binary
+*.zip binary
+*.keystore binary
+*.jks binary
+*.p12 binary
+*.mobileprovision binary
+
+# Gradle wrapper — бинарный jar, но скрипты текстовые.
+*.gradle text eol=lf
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+
+# Dart-исходники строго LF.
+*.dart text eol=lf

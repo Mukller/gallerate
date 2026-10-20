@@ -1,0 +1,54 @@
+name: gallerate
+description: Разгреби галерею, оценивая по 10 фото в день свайпами.
+publish_to: "none"
+version: 0.3.0+3
+homepage: https://github.com/Mukller/gallerate
+repository: https://github.com/Mukller/gallerate
+issue_tracker: https://github.com/Mukller/gallerate/issues
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Локальная галерея (Android/iOS)
+  photo_manager: ^3.5.0
+
+  # Локальная БД без интернета
+  sqflite: ^2.3.3
+  path: ^1.9.0
+
+  # Настройки
+  shared_preferences: ^2.3.2
+
+  # Состояние
+  provider: ^6.1.2
+
+  # Ежедневное напоминание о новом сете
+  flutter_local_notifications: ^19.4.2
+  timezone: ^0.10.1
+  # IANA-идентификатор локальной зоны. Без него timezone отдаёт UTC,
+  # и напоминание на «20:00» пришло бы в 23:00.
+  flutter_timezone: ^4.1.1
+
+  # Графики статистики
+  fl_chart: ^0.69.0
+
+  # Экспорт/импорт (системный выбор файла)
+  file_picker: ^10.3.3
+  path_provider: ^2.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+  # Тесты слоя БД на десктопе: настоящий SQLite без устройства и эмулятора.
+  sqflite_common_ffi: ^2.3.6
+
+flutter:
+  uses-material-design: true
