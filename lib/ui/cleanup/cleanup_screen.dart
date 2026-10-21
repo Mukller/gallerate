@@ -6,17 +6,22 @@ import '../../core/rating_style.dart';
 import '../../data/db.dart';
 import '../../data/rating_store.dart';
 import '../../data/gallery_service.dart';
+import '../../data/gallery_source.dart';
 import '../../data/models.dart';
 import '../../logic/app_state.dart';
 import '../best/asset_image.dart';
 import '../tab_index.dart';
 
 class CleanupScreen extends StatefulWidget {
-  const CleanupScreen({super.key, this.store});
+  const CleanupScreen({super.key, this.store, this.gallery});
 
   /// Хранилище оценок. По умолчанию — боевая база; в тестах подставляется
   /// фейк (см. комментарий в [BestScreen.store]).
   final RatingStore? store;
+
+  /// Галерея. Нужна для удаления файлов с устройства — операции, которую
+  /// необратимо, поэтому она тоже должна быть подменяемой в тестах.
+  final GallerySource? gallery;
 
   @override
   State<CleanupScreen> createState() => _CleanupScreenState();
@@ -24,6 +29,9 @@ class CleanupScreen extends StatefulWidget {
 
 class _CleanupScreenState extends State<CleanupScreen> {
   RatingStore get _store => widget.store ?? AppDb.instance;
+
+  GallerySource get _gallery => widget.gallery ?? GalleryService.instance;
+
   late Future<List<PhotoRow>> _future;
   final Set<String> _selected = {};
   bool _deleting = false;
@@ -94,7 +102,7 @@ class _CleanupScreenState extends State<CleanupScreen> {
 
     setState(() => _deleting = true);
     final ids = _selected.toList(growable: false);
-    final failed = await GalleryService.instance.deleteAssets(ids);
+    final failed = await _gallery.deleteAssets(ids);
     final deletedIds = ids.where((id) => !failed.contains(id)).toList();
     await _store.markDeleted(deletedIds);
     await app.refreshCollections();
@@ -188,7 +196,12 @@ class _CleanupScreenState extends State<CleanupScreen> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: AssetEntityImageLoader(assetId: row.id),
+                      child: AssetEntityImageLoader(
+                        // Ключ с идентификатором: по нему виджет-тест
+                        // выбирает нужное фото, а не «первое попавшееся».
+                        key: ValueKey('cleanup_photo_${row.id}'),
+                        assetId: row.id,
+                      ),
                     ),
                     Positioned(
                       top: 6,

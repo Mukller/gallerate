@@ -213,6 +213,19 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     ),
                   ),
                 ],
+                // Отмена последней оценки. Кнопка появляется только когда
+                // отменять есть что: обещать действие, которого нельзя
+                // выполнить, хуже, чем не показать кнопку вовсе.
+                if (app.canUndo) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => app.undoLastRating(),
+                    icon: const Icon(Icons.undo_rounded, size: 20),
+                    color: Theme.of(context).colorScheme.outline,
+                    tooltip: context.tr('undo'),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
               ],
             ),
           ),

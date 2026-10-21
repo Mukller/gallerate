@@ -32,13 +32,19 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   int _index = 0;
   Timer? _ticker;
 
-  late final List<Widget> _screens = [
-    const SwipeScreen(),
-    BestScreen(store: widget.store),
-    CleanupScreen(store: widget.store),
-    HistoryScreen(store: widget.store),
-    StatsScreen(store: widget.store),
-  ];
+  /// Экраны строятся здесь, а не в поле: хранилище и галерея берутся из
+  /// [AppState], который доступен только через Provider в контексте.
+  ///
+  /// Состояние экранов при этом не теряется: Flutter сохраняет State, пока
+  /// тип виджета и позиция в дереве те же, а экземпляры виджетов создаются
+  /// заново при каждой перестройке.
+  List<Widget> _screensFor(AppState app) => [
+        const SwipeScreen(),
+        BestScreen(store: app.store, gallery: app.gallery),
+        CleanupScreen(store: app.store, gallery: app.gallery),
+        HistoryScreen(store: app.store),
+        StatsScreen(store: app.store),
+      ];
 
   @override
   void initState() {
@@ -79,7 +85,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<AppState>();
+    final app = context.watch<AppState>();
     final titles = [
       context.tr('tabSwipe'),
       context.tr('tabBest'),
@@ -103,7 +109,7 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
       ),
       body: Provider<int>.value(
         value: _index,
-        child: IndexedStack(index: _index, children: _screens),
+        child: IndexedStack(index: _index, children: _screensFor(app)),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,

@@ -69,6 +69,47 @@ void main() {
     });
   });
 
+  group('clearRating', () {
+    test('удаляет запись целиком', () async {
+      await AppDb.instance.markSeen('a1', 7);
+      expect(await ratingOf('a1'), 7);
+
+      await AppDb.instance.clearRating('a1');
+
+      expect(await ratingOf('a1'), isNull,
+          reason: 'оценка должна исчезнуть, а не стать нулём');
+      expect(await AppDb.instance.totalSeen(), 0);
+    });
+
+    // Регрессия: если бы оценка обнулялась (rating = 0), фото осталось бы
+    // в базе и попало в историю и статистику как пропущенное, а также
+    // продолжало считаться просмотренным.
+    test('фото возвращается в непросмотренные', () async {
+      await AppDb.instance.markSeen('a1', 7);
+      await AppDb.instance.clearRating('a1');
+
+      expect(await AppDb.instance.seenIds(), isNot(contains('a1')));
+      final stats = await AppDb.instance.dayStats();
+      expect(stats.values.fold<int>(0, (s, d) => s + d.ratedTotal), 0,
+          reason: 'в статистике дня не должно остаться следов');
+    });
+
+    test('не трогает остальные фото', () async {
+      await AppDb.instance.markSeen('a1', 7);
+      await AppDb.instance.markSeen('a2', 8);
+
+      await AppDb.instance.clearRating('a1');
+
+      expect(await ratingOf('a2'), 8);
+      expect(await AppDb.instance.totalSeen(), 1);
+    });
+
+    test('снятие несуществующей оценки не падает', () async {
+      await AppDb.instance.clearRating('нет-такого');
+      expect(await AppDb.instance.totalSeen(), 0);
+    });
+  });
+
   group('totalSeen', () {
     test('не считает удалённые фото', () async {
       await AppDb.instance.markSeen('a1', 7);

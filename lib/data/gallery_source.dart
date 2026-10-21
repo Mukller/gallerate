@@ -31,4 +31,18 @@ abstract class GallerySource {
     required Set<String> excludeIds,
     List<String>? selectedAlbumIds,
   });
+
+  /// Удалить фото с устройства. Возвращает идентификаторы тех, что
+  /// удалить НЕ удалось.
+  ///
+  /// Метод в интерфейсе, а не только в реализации: удаление необратимо,
+  /// и самый опасный сценарий приложения обязан проверяться тестом.
+  Future<List<String>> deleteAssets(List<String> ids);
+
+  /// Скопировать фото в папку галереи для оценки [rating].
+  /// Возвращает true, если копирование удалось.
+  Future<bool> copyToRatingFolder({
+    required AssetEntity asset,
+    required int rating,
+  });
 }

@@ -9,6 +9,7 @@ import '../../core/rating_style.dart';
 import '../../data/db.dart';
 import '../../data/rating_store.dart';
 import '../../data/gallery_service.dart';
+import '../../data/gallery_source.dart';
 import '../../data/models.dart';
 import '../../logic/app_state.dart';
 import '../tab_index.dart';
@@ -16,12 +17,15 @@ import 'asset_image.dart';
 import 'rating_chip.dart';
 
 class BestScreen extends StatefulWidget {
-  const BestScreen({super.key, this.store});
+  const BestScreen({super.key, this.store, this.gallery});
 
   /// Хранилище оценок. По умолчанию — боевая база; в тестах подставляется
   /// фейк: читать SQLite прямо из виджета нельзя, операции БД внутри
   /// виджет-тестов не завершаются и тест зависает.
   final RatingStore? store;
+
+  /// Галерея. Нужна для копирования фото в папку оценки.
+  final GallerySource? gallery;
 
   @override
   State<BestScreen> createState() => _BestScreenState();
@@ -30,6 +34,8 @@ class BestScreen extends StatefulWidget {
 class _BestScreenState extends State<BestScreen> {
   /// Боевая база или подставленный в тестах фейк.
   RatingStore get _store => widget.store ?? AppDb.instance;
+
+  GallerySource get _gallery => widget.gallery ?? GalleryService.instance;
   Map<int, int> _counts = {};
   int _selected = 10;
   late Future<List<PhotoRow>> _gridFuture;
@@ -156,7 +162,7 @@ class _BestScreenState extends State<BestScreen> {
       for (final row in unsorted) {
         final asset = await AssetEntity.fromId(row.id);
         if (asset == null) continue;
-        final ok = await GalleryService.instance.copyToRatingFolder(
+        final ok = await _gallery.copyToRatingFolder(
           asset: asset,
           rating: row.rating,
         );

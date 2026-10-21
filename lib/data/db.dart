@@ -102,6 +102,16 @@ class AppDb implements RatingStore {
   }
 
   @override
+  Future<void> clearRating(String assetId) async {
+    final d = await db;
+    // Строка удаляется целиком, а не обнуляется: с rating = 0 фото
+    // считалось бы пропущенным, попадало в историю и статистику, а
+    // «непросмотренным» больше не было. Удаление возвращает его в
+    // исходное состояние — как будто оценки не было.
+    await d.delete('photos', where: 'id = ?', whereArgs: [assetId]);
+  }
+
+  @override
   Future<Set<String>> seenIds() async {
     final d = await db;
     final rows = await d.query('photos', columns: ['id']);

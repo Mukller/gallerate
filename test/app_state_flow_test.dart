@@ -338,4 +338,101 @@ void main() {
       expect(make(3).currentId, isNull);
     });
   });
+
+  group('отмена последней оценки', () {
+    test('до первой оценки отменять нечего', () async {
+      final app = await withSet(['a1', 'a2', 'a3']);
+
+      expect(app.canUndo, isFalse);
+
+      await app.undoLastRating();
+
+      expect(app.activeSet!.cursor, 0, reason: 'курсор не сдвинулся');
+      expect(store.ratingOf('a1'), isNull);
+    });
+
+    test('отмена возвращает курсор и снимает оценку', () async {
+      final app = await withSet(['a1', 'a2', 'a3']);
+      await app.rateCurrent(8);
+      await app.rateCurrent(3);
+
+      expect(app.activeSet!.cursor, 2);
+      expect(app.canUndo, isTrue);
+
+      await app.undoLastRating();
+
+      // Курсор вернулся на снятую оценку, и она снова перед пользователем.
+      expect(app.activeSet!.cursor, 1);
+      expect(app.activeSet!.currentId, 'a2');
+      // Оценка снята: фото снова непросмотренное.
+      expect(store.ratingOf('a2'), isNull);
+      // Первая оценка не тронута.
+      expect(store.ratingOf('a1'), 8);
+    });
+
+    test('счётчик оцененных уменьшается', () async {
+      final app = await withSet(['a1', 'a2', 'a3']);
+      await app.refreshCollections();
+      await app.rateCurrent(8);
+      expect(app.seenTotal, 1);
+
+      await app.undoLastRating();
+
+      expect(app.seenTotal, 0, reason: 'оценённых фото снова ноль');
+    });
+
+    test('фото возвращается в число непросмотренных', () async {
+      final app = await withSet(['a1', 'a2', 'a3']);
+      await app.rateCurrent(8);
+      expect(await store.seenIds(), contains('a1'));
+
+      await app.undoLastRating();
+
+      expect(await store.seenIds(), isNot(contains('a1')),
+          reason: 'отменённое фото должно снова считаться непросмотренным');
+    });
+
+    test('повторная оценка после отмены засчитывается заново', () async {
+      final app = await withSet(['a1', 'a2', 'a3']);
+      await app.rateCurrent(8);
+      await app.undoLastRating();
+
+      await app.rateCurrent(5);
+
+      expect(store.ratingOf('a1'), 5, reason: 'новая оценка вместо старой');
+      expect(app.activeSet!.cursor, 1);
+    });
+
+    test('несколько отмен подряд откатывают всё', () async {
+      // Набор длиннее, чем число оценок: иначе он закроется и отменять
+      // станет нечего (закрытый набор отменить нельзя).
+      final app = await withSet(['a1', 'a2', 'a3', 'a4', 'a5']);
+      await app.rateCurrent(8);
+      await app.rateCurrent(6);
+      await app.rateCurrent(9);
+      expect(app.activeSet!.cursor, 3);
+
+      await app.undoLastRating();
+      await app.undoLastRating();
+      await app.undoLastRating();
+
+      expect(app.activeSet!.cursor, 0);
+      expect(app.canUndo, isFalse);
+      expect(await store.seenIds(), isEmpty);
+    });
+
+    test('закрытый набор отменить нельзя', () async {
+      final app = await withSet(['a1', 'a2']);
+      await app.rateCurrent(8);
+      await app.rateCurrent(6);
+      // Набор из двух фото закрыт после второй оценки.
+      expect(app.activeSet!.completed, isTrue);
+      expect(app.canUndo, isFalse);
+
+      await app.undoLastRating();
+
+      expect(app.activeSet!.completed, isTrue,
+          reason: 'закрытый набор не должен открываться обратно');
+    });
+  });
 }

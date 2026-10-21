@@ -24,6 +24,14 @@ class AppState extends ChangeNotifier {
   final RatingStore _store;
   final GallerySource _gallery;
 
+  /// Галерея, с которой работает приложение. Экраны берут её отсюда,
+  /// а не из статического синглтона: иначе удаление фото и копирование
+  /// в папку нельзя подменить в тестах.
+  GallerySource get gallery => _gallery;
+
+  /// Хранилище оценок — по той же причине.
+  RatingStore get store => _store;
+
   SettingsRepository? _settings;
   bool onboardedFlag = false;
 
@@ -348,6 +356,50 @@ class AppState extends ChangeNotifier {
   Future<void> rateCurrent(int rating) => _applyRating(rating.clamp(0, 10));
 
   Future<void> skipCurrent() => _applyRating(0);
+
+  /// Можно ли отменить последнюю оценку.
+  ///
+  /// Только пока набор открыт и в нём уже что-то оценено. Закрытый набор
+  /// переоткрывать нельзя: экран сводки к нему уже привязан, и «отмена»
+  /// превратилась бы в отдельный сценарий с двумя экранами.
+  bool get canUndo {
+    final set = activeSet;
+    if (set == null) return false;
+    if (set.completed) return false;
+    return set.cursor > 0;
+  }
+
+  /// Отменить последнюю оценку: фото возвращается в колоду, оценка
+  /// снимается, фото снова считается непросмотренным.
+  ///
+  /// Ошибку оценили — не должно быть способа исправить её только через
+  /// списки «Лучшие» и «Убрать», куда надо специально идти.
+  Future<void> undoLastRating() async {
+    final set = activeSet;
+    if (set == null || set.completed || set.cursor <= 0) return;
+    if (inFlightRating) return;
+
+    final index = set.cursor - 1;
+    if (index < 0 || index >= set.assetIds.length) return;
+    final id = set.assetIds[index];
+
+    inFlightRating = true;
+    try {
+      await _store.clearRating(id);
+      await _store.advanceCursor(set.id, index);
+      activeSet = set.copyWith(cursor: index);
+      if (seenTotal > 0) seenTotal -= 1;
+      // Серия могла измениться: если отменённый день был единственным
+      // активным, день перестаёт быть активным.
+      currentStreak = await _store.currentStreak();
+      hasStreakLoaded = true;
+    } catch (e) {
+      debugPrint('undoLastRating failed: $e');
+    } finally {
+      inFlightRating = false;
+    }
+    notifyListeners();
+  }
 
   Future<void> setDailyCountAndSave(int v) async {
     dailyCount = v;

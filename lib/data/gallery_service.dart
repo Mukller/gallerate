@@ -129,6 +129,7 @@ class GalleryService implements GallerySource {
   /// На Android 10+ удаление идёт через системный createDeleteRequest:
   /// после Allow система может удалить файлы асинхронно, а failed-list
   /// бывает ложно непустым — поэтому перепроверяем фактическое наличие.
+  @override
   Future<List<String>> deleteAssets(List<String> ids) async {
     try {
       final failed = await PhotoManager.editor.deleteWithIds(ids);
@@ -157,6 +158,7 @@ class GalleryService implements GallerySource {
   /// Копирует фото в папку галереи для оценки [rating].
   /// Android: файл копируется в DCIM/Gallerate <rating>.
   /// iOS/macOS: soft-link через copyAssetToPath (если альбом существует).
+  @override
   Future<bool> copyToRatingFolder({
     required AssetEntity asset,
     required int rating,

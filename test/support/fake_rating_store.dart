@@ -260,6 +260,12 @@ class FakeRatingStore implements RatingStore {
     return out;
   }
 
+  /// Снять оценку: запись удаляется целиком, как в SQLite.
+  @override
+  Future<void> clearRating(String assetId) async {
+    _photos.remove(assetId);
+  }
+
   /// Экспорт: сырые строки, как в SQLite.
   @override
   Future<List<Map<String, Object?>>> allRatingMaps() async {

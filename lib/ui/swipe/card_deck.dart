@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../core/rating_style.dart';
+import 'photo_viewer.dart';
 
 enum _DeckPhase { idle, dragging, flying, returning, skipping }
 
@@ -297,6 +298,9 @@ class SwipeCardDeckState extends State<SwipeCardDeck>
           onPanUpdate: _onPanUpdate,
           onPanEnd: _onPanEnd,
           onPanCancel: _onPanCancel,
+          // Тап по фото — рассмотреть крупно. Оценку он не ставит: тап
+          // без перетаскивания не вызывает onPanEnd.
+          onTap: () => openPhotoViewer(context, asset),
           onLongPress: () {
             HapticFeedback.heavyImpact();
             programmaticSkip();
@@ -430,9 +434,38 @@ class _CardView extends StatelessWidget {
                     color: Colors.white, size: 22),
               ),
             ),
+          // Дата снимка: по ней видно, что перед тобой — свежее фото или
+          // четырёхлетний размытый кадр из отпуска. Без неё решение
+          // «оставить или удалить» принимается вслепую.
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                _formatDate(asset.createDateTime),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  /// Дата в формате ДД.ММ.ГГГГ.
+  static String _formatDate(DateTime d) {
+    final day = d.day.toString().padLeft(2, '0');
+    final month = d.month.toString().padLeft(2, '0');
+    return '$day.$month.${d.year}';
   }
 }
 

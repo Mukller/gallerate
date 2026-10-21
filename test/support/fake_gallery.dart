@@ -32,6 +32,33 @@ class FakeGallery implements GallerySource {
   List<String>? lastSelectedAlbums;
   int? lastRequestedCount;
 
+  /// Какие фото якобы не удалось удалить. Пусто — удаляется всё.
+  Set<String> failDeleteIds = {};
+
+  /// Что удалили (для проверок).
+  final List<List<String>> deleteCalls = [];
+
+  /// Куда и с какой оценкой копировали: (assetId, rating).
+  final List<(String, int)> copyCalls = [];
+
+  /// Копирование всегда успешное, если не задано иначе.
+  bool copySucceeds = true;
+
+  @override
+  Future<List<String>> deleteAssets(List<String> ids) async {
+    deleteCalls.add(List.of(ids));
+    return ids.where(failDeleteIds.contains).toList();
+  }
+
+  @override
+  Future<bool> copyToRatingFolder({
+    required AssetEntity asset,
+    required int rating,
+  }) async {
+    copyCalls.add((asset.id, rating));
+    return copySucceeds;
+  }
+
   @override
   bool get hasAccess => access;
 

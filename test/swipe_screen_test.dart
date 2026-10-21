@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gallerate/logic/app_state.dart';
 import 'package:gallerate/ui/swipe/card_deck.dart';
+import 'package:gallerate/ui/swipe/photo_viewer.dart';
 import 'package:gallerate/ui/swipe/swipe_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -183,6 +184,133 @@ void main() {
       await settle(tester);
 
       expect(find.byType(SwipeCardDeck), findsNothing);
+    });
+  });
+
+  group('отмена оценки', () {
+    /// Прогоняет анимацию вылета карточки (320 мс).
+    Future<void> flyOut(WidgetTester tester) async {
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await settle(tester);
+    }
+
+    testWidgets('до первой оценки кнопки отмены нет', (tester) async {
+      final app = await stateWithSet(['a1', 'a2', 'a3']);
+
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      expect(find.byIcon(Icons.undo_rounded), findsNothing,
+          reason: 'отменять нечего — кнопку показывать незачем');
+    });
+
+    testWidgets('после оценки кнопка появляется', (tester) async {
+      final app = await stateWithSet(['a1', 'a2', 'a3']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      await tester.tap(find.text('8'));
+      await flyOut(tester);
+
+      expect(find.byIcon(Icons.undo_rounded), findsOneWidget);
+    });
+
+    testWidgets('отмена возвращает фото в колоду', (tester) async {
+      final app = await stateWithSet(['a1', 'a2', 'a3']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      await tester.tap(find.text('8'));
+      await flyOut(tester);
+      expect(app.activeSet!.cursor, 1);
+      expect(app.activeSet!.currentId, 'a2');
+
+      await tester.tap(find.byIcon(Icons.undo_rounded));
+      await flyOut(tester);
+
+      expect(app.activeSet!.cursor, 0, reason: 'курсор вернулся назад');
+      expect(app.activeSet!.currentId, 'a1');
+      // Колода снова показывает отменённое фото.
+      final deck = tester.widget<SwipeCardDeck>(find.byType(SwipeCardDeck));
+      expect(deck.assets.first.id, 'a1');
+      expect(find.text('0 / 3'), findsOneWidget);
+    });
+
+    testWidgets('после отмены кнопка прячется, когда отменять нечего',
+        (tester) async {
+      final app = await stateWithSet(['a1', 'a2', 'a3']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      await tester.tap(find.text('8'));
+      await flyOut(tester);
+      expect(find.byIcon(Icons.undo_rounded), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.undo_rounded));
+      await flyOut(tester);
+
+      expect(find.byIcon(Icons.undo_rounded), findsNothing);
+    });
+  });
+
+  group('карточка: дата и просмотр', () {
+    testWidgets('на передней карточке показана дата снимка', (tester) async {
+      final app = await stateWithSet(['a1', 'a2']);
+
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      // Дата выводится в локальном времени — ожидание берём из того же
+      // источника, что и мок, иначе тест зависел бы от часового пояса.
+      expect(find.text(PhotoManagerMock.localDateOf('a1')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('тап по фото открывает полноэкранный просмотр', (tester) async {
+      final app = await stateWithSet(['a1', 'a2']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      expect(find.byType(PhotoViewerPage), findsNothing);
+
+      await tester.tap(find.byType(SwipeCardDeck));
+      await settle(tester);
+
+      expect(find.byType(PhotoViewerPage), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('тап по фото НЕ ставит оценку', (tester) async {
+      final app = await stateWithSet(['a1', 'a2', 'a3']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      await tester.tap(find.byType(SwipeCardDeck));
+      await settle(tester);
+
+      // Курсор на месте: тап — это просмотр, а не оценка.
+      expect(app.activeSet!.cursor, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('просмотр закрывается тапом и оценка остаётся невыставленной',
+        (tester) async {
+      final app = await stateWithSet(['a1', 'a2', 'a3']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      await tester.tap(find.byType(SwipeCardDeck));
+      await settle(tester);
+      expect(find.byType(PhotoViewerPage), findsOneWidget);
+
+      await tester.tapAt(const Offset(200, 200));
+      await settle(tester);
+
+      expect(find.byType(PhotoViewerPage), findsNothing);
+      expect(app.activeSet!.cursor, 0);
+      expect(tester.takeException(), isNull);
     });
   });
 

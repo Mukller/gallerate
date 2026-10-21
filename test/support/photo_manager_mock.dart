@@ -68,8 +68,8 @@ class PhotoManagerMock {
           'width': 100,
           'height': 100,
           'title': 'photo_$id.jpg',
-          'createDt': 1700000000,
-          'modified': 1700000000,
+          'createDt': createDateOf(id),
+          'modified': createDateOf(id),
         };
 
       // Формат: Map с ключом 'data' -> List путей; у пути обязателен
@@ -121,4 +121,23 @@ class PhotoManagerMock {
   /// Ассет, который галерея считает существующим.
   static AssetEntity asset(String id) =>
       AssetEntity(id: id, typeInt: 1, width: 100, height: 100);
+
+  /// Время съёмки ассета — в секундах, как это делает нативная часть
+  /// photo_manager (createDt приходит именно в секундах).
+  ///
+  /// Дата зависит от идентификатора, иначе у всех фото была бы одна и та же
+  /// дата и тест не смог бы отличить переднюю карточку от задних.
+  static int createDateOf(String id) {
+    // Разводим фото по разным дням: +1 день за каждую «букву» идентификатора.
+    final offset = id.codeUnits.fold<int>(0, (a, b) => a + b) % 30;
+    return 1700000000 + offset * 86400;
+  }
+
+  /// Дата ассета в локальном времени — так же, как её считает приложение.
+  static String localDateOf(String id) {
+    final d = DateTime.fromMillisecondsSinceEpoch(createDateOf(id) * 1000);
+    final day = d.day.toString().padLeft(2, '0');
+    final month = d.month.toString().padLeft(2, '0');
+    return '$day.$month.${d.year}';
+  }
 }
