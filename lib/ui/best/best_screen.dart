@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/l10n.dart';
 import '../../ui/list_error_view.dart';
+import '../../ui/photo_date_badge.dart';
+import '../../ui/photo_sort_bar.dart';
 import '../../core/rating_style.dart';
 import '../../data/db.dart';
 import '../../data/rating_store.dart';
@@ -255,13 +257,10 @@ class _BestScreenState extends State<BestScreen> {
                 ),
                 const SizedBox(width: 8),
                 const _UnsortedAndActions(),
-                IconButton(
-                  onPressed: _toggleSort,
-                  icon: Icon(_sort == PhotoSort.takenDate
-                      ? Icons.event
-                      : Icons.star_outline),
-                  tooltip: context.tr('sortToggle'),
-                  visualDensity: VisualDensity.compact,
+                PhotoSortBar(
+                  sort: _sort,
+                  onToggle: _toggleSort,
+                  showLabel: false,
                 ),
               ],
             ),
@@ -325,6 +324,12 @@ class _BestScreenState extends State<BestScreen> {
                           fit: StackFit.expand,
                           children: [
                             AssetEntityImageLoader(assetId: row.id),
+                            if (row.takenAt != null)
+                              Positioned(
+                                bottom: 6,
+                                left: 6,
+                                child: PhotoDateBadge(takenAt: row.takenAt),
+                              ),
                             Positioned(
                               top: 6,
                               right: 6,

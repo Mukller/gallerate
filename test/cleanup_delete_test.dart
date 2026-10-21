@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gallerate/logic/app_state.dart';
 import 'package:gallerate/ui/cleanup/cleanup_screen.dart';
+import 'package:gallerate/ui/photo_date_badge.dart';
 import 'package:gallerate/ui/tab_index.dart';
 import 'package:provider/provider.dart';
 
@@ -139,6 +140,27 @@ void main() {
       await settle(tester);
 
       expect(find.text('By rating'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets('на плитке видна дата съёмки', (tester) async {
+      // takenAt = 1000 секунд от эпохи — 01.01.1970 в UTC.
+      await store.markSeen('bad1', 2, takenAt: 1000 * 1000);
+      await pump(tester);
+
+      final expected = formatPhotoDate(
+        DateTime.fromMillisecondsSinceEpoch(1000 * 1000),
+      );
+      expect(find.text(expected), findsOneWidget,
+          reason: 'дата съёмки должна быть видна на плитке');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('фото без известной даты не показывают пустую плашку',
+        (tester) async {
+      await store.markSeen('bad1', 2);
+      await pump(tester);
+
+      expect(find.byType(PhotoDateBadge), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

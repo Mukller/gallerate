@@ -109,6 +109,36 @@ class Notifications {
     }
   }
 
+  /// Разрешены ли уведомления на устройстве прямо сейчас.
+  ///
+  /// Без этой проверки отказ в разрешении был полностью молчаливым:
+  /// пользователь выбирал время напоминания, видел, что оно сохранено, и
+  /// был уверен, что напоминание придёт — а оно не приходило, потому что
+  /// Android 13+ требует явного согласия, а отказ нигде не показывался.
+  ///
+  /// Возвращает false, если платформа не поддерживает уведомления или
+  /// состояние выяснить не удалось: в этом случае честнее сказать
+  /// «выключено», чем показывать работающее напоминание, которого нет.
+  Future<bool> areEnabled() async {
+    if (!isSupported) return false;
+    try {
+      await init();
+      if (!_ready) return false;
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final ios = _plugin.resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>();
+        final perms = await ios?.checkPermissions();
+        return perms?.isEnabled ?? false;
+      }
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      return await android?.areNotificationsEnabled() ?? false;
+    } catch (e) {
+      debugPrint('Notifications.areEnabled failed: $e');
+      return false;
+    }
+  }
+
   /// Android 13+ требует явного согласия на уведомления.
   Future<bool> requestPermission() async {
     if (!isSupported) return false;

@@ -61,6 +61,12 @@ class AppState extends ChangeNotifier {
   /// Экраны показывают её и сбрасывают. Пусто — ошибок нет.
   String? lastError;
 
+  /// Выключены ли уведомления на устройстве.
+  ///
+  /// Отказ в разрешении раньше был полностью молчаливым: пользователь
+  /// видел сохранённое время напоминания и был уверен, что оно придёт.
+  bool notificationsOff = false;
+
   /// Счётчик изменений данных. Нужен потому, что сигналом обновления
   /// «Истории» и «Статистики» служил seenTotal, а он не меняется при
   /// переоценке: фото уже было посчитано, изменилась только его оценка —
@@ -94,8 +100,22 @@ class AppState extends ChangeNotifier {
 
   Future<bool> requestNotificationPermission() async {
     final ok = await Notifications.instance.requestPermission();
+    notificationsOff = !ok;
     notifyListeners();
     return ok;
+  }
+
+  /// Выяснить, разрешены ли уведомления, и запомнить.
+  ///
+  /// На платформах без уведомлений (десктоп, тесты) флаг не поднимается:
+  /// «напоминания выключены» там бессмысленно.
+  Future<void> refreshNotificationPermission() async {
+    if (!Notifications.instance.isSupported) {
+      notificationsOff = false;
+    } else {
+      notificationsOff = !(await Notifications.instance.areEnabled());
+    }
+    notifyListeners();
   }
 
   /// Запуск приложения. Не должна бросать: любое исключение здесь означает
@@ -129,6 +149,10 @@ class AppState extends ChangeNotifier {
     debugPrint('[Gallerate] init: onboarded=$onboardedFlag, phase=$phase');
 
     unawaited(syncNotification());
+    // Состояние разрешения на уведомления выясняем сразу: иначе отказ
+    // в нём остался бы незамеченным, и пользователь ждал бы напоминание,
+    // которого не будет.
+    unawaited(refreshNotificationPermission());
 
     if (!onboardedFlag) {
       phase = BootPhase.needsOnboarding;

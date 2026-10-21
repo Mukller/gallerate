@@ -294,6 +294,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 8),
+          // Уведомления выключены: без этого пользователь считал бы, что
+          // ежедневное напоминание настроено, а оно не приходило бы.
+          if (app.notificationsOff) ...[
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.notifications_off_outlined,
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            context.tr('notifPermTitle'),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      context.tr('notifPermBody'),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () async {
+                          final ok = await app.requestNotificationPermission();
+                          if (ok && context.mounted) {
+                            await app.syncNotification();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(context.tr('notifEnabled'))),
+                              );
+                            }
+                          }
+                        },
+                        child: Text(context.tr('allowNotifications')),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Card(
             child: ListTile(
               leading: const Icon(Icons.folder_copy_outlined),

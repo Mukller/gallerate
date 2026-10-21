@@ -7,6 +7,7 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../../core/rating_style.dart';
 import '../../data/models.dart' show keepFrom;
+import '../photo_date_badge.dart';
 import 'photo_viewer.dart';
 
 enum _DeckPhase { idle, dragging, flying, returning, skipping }
@@ -457,7 +458,7 @@ class _CardView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
-                _formatDate(asset.createDateTime),
+                formatPhotoDate(asset.createDateTime),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
@@ -469,13 +470,6 @@ class _CardView extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  /// Дата в формате ДД.ММ.ГГГГ.
-  static String _formatDate(DateTime d) {
-    final day = d.day.toString().padLeft(2, '0');
-    final month = d.month.toString().padLeft(2, '0');
-    return '$day.$month.${d.year}';
   }
 }
 

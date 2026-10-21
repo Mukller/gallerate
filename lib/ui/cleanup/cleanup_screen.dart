@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/l10n.dart';
 import '../../ui/list_error_view.dart';
+import '../../ui/photo_date_badge.dart';
+import '../../ui/photo_sort_bar.dart';
 import '../../core/rating_style.dart';
 import '../../data/db.dart';
 import '../../data/rating_store.dart';
@@ -26,40 +28,6 @@ class CleanupScreen extends StatefulWidget {
 
   @override
   State<CleanupScreen> createState() => _CleanupScreenState();
-}
-
-/// Панель порядка: по оценке или по дате съёмки.
-class _SortBar extends StatelessWidget {
-  const _SortBar({required this.sort, required this.onToggle});
-
-  final PhotoSort sort;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final byDate = sort == PhotoSort.takenDate;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 8, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              byDate
-                  ? context.tr('sortOldestFirst')
-                  : context.tr('sortByRating'),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-          IconButton(
-            onPressed: onToggle,
-            icon: Icon(byDate ? Icons.event : Icons.star_outline),
-            tooltip: context.tr('sortToggle'),
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _CleanupScreenState extends State<CleanupScreen> {
@@ -219,7 +187,10 @@ class _CleanupScreenState extends State<CleanupScreen> {
     return Scaffold(
       body: Column(
         children: [
-          _SortBar(sort: _sort, onToggle: _toggleSort),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 0),
+            child: PhotoSortBar(sort: _sort, onToggle: _toggleSort),
+          ),
           Expanded(
             child: FutureBuilder<List<PhotoRow>>(
               future: _future,
@@ -307,6 +278,12 @@ class _CleanupScreenState extends State<CleanupScreen> {
                                   width: 3,
                                 ),
                               ),
+                            ),
+                          if (row.takenAt != null)
+                            Positioned(
+                              bottom: 6,
+                              right: 6,
+                              child: PhotoDateBadge(takenAt: row.takenAt),
                             ),
                           Positioned(
                             top: 6,
