@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +31,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final Map<String, AssetEntity> _assetCache = {};
   int _loadedSetId = -1;
   bool _prefetching = false;
+  bool _loadingWindow = false;
   String? _prunedKey;
 
   static const int _windowSize = 3;
@@ -52,28 +55,36 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   /// Догружает окно + упреждающе кэширует остаток сета.
+  ///
+  /// Два флага, а не один: загрузка окна и упреждающая догрузка идут
+  /// параллельно, и общий флаг делал вторую бессмысленной. Раньше
+  /// `_prefetchAhead` вызывался изнутри `_ensureLoaded` при уже поднятом
+  /// `_prefetching`, а сам `_prefetchAhead` выходил по этому же флагу —
+  /// то есть упреждающая загрузка не запускалась НИКОГДА. Кэш содержал
+  /// только текущее окно из трёх фото, и после третьего свайпа карточка
+  /// пропадала и появлялась снова со спиннером.
   Future<void> _ensureLoaded(SetInfo set) async {
-    if (_prefetching) return;
+    if (_loadingWindow) return;
     if (_loadedSetId != set.id) {
       _loadedSetId = set.id;
       _assetCache.clear();
     }
-    if (!_needsFetch(set)) {
-      _prefetchAhead(set);
-      return;
-    }
-    _prefetching = true;
-    try {
-      for (final id in set.assetIds.skip(set.cursor).take(_windowSize)) {
-        if (_assetCache.containsKey(id)) continue;
-        final a = await AssetEntity.fromId(id);
-        if (a != null) _assetCache[id] = a;
+    if (_needsFetch(set)) {
+      _loadingWindow = true;
+      try {
+        for (final id in set.assetIds.skip(set.cursor).take(_windowSize)) {
+          if (_assetCache.containsKey(id)) continue;
+          final a = await AssetEntity.fromId(id);
+          if (a != null) _assetCache[id] = a;
+        }
+        if (mounted) setState(() {});
+      } finally {
+        _loadingWindow = false;
       }
-      if (mounted) setState(() {});
-      _prefetchAhead(set);
-    } finally {
-      _prefetching = false;
     }
+    // Упреждающе кэшируем остаток сета — отдельным флагом, иначе вызов
+    // изнутри загрузки окна всегда выходил бы сразу.
+    unawaited(_prefetchAhead(set));
   }
 
   Future<void> _prefetchAhead(SetInfo set) async {
@@ -109,6 +120,19 @@ class _SwipeScreenState extends State<SwipeScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
 
+    // Ошибка записи оценки: карточка уже улетела, а оценка не сохранилась.
+    // Молчать об этом нельзя — пользователь решит, что свайп не засчитался.
+    final err = app.lastError;
+    if (err != null) {
+      app.lastError = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(err)),
+        );
+      });
+    }
+
     if (!app.hasAccess) {
       return _CenteredMessage(
         icon: Icons.lock_outline,
@@ -143,6 +167,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
 
     if (!set.hasPending) {
+      // Сводка уже показывалась — показываем понятное состояние, а НЕ
+      // вечный спиннер. Раньше здесь крутился CircularProgressIndicator
+      // навсегда: сводка второй раз не открывалась (флаг по id сета), а
+      // set == null (ожидание) не выполнялось, потому что закрытый набор
+      // оставался в app.activeSet. Пользователь оставался с экрана без
+      // единой кнопки.
+      if (_summaryPushedForSetId == set.id) {
+        return _SetDoneView(
+          timeText: app.appearTimeString,
+          onMore: () => app.startExtraSet(),
+        );
+      }
       _maybePushSummary(app);
       return const Center(child: CircularProgressIndicator());
     }
@@ -219,7 +255,14 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 if (app.canUndo) ...[
                   const SizedBox(width: 4),
                   IconButton(
-                    onPressed: () => app.undoLastRating(),
+                    // Пока карточка летит, оценка ещё не записана, а
+                    // отмена пересобирает набор и сбрасывает колоду —
+                    // неотправленная оценка пропала бы молча. Поэтому в
+                    // этот момент отмена запрещена.
+                    onPressed: () {
+                      if (_deckKey.currentState?.isBusy ?? false) return;
+                      app.undoLastRating();
+                    },
                     icon: const Icon(Icons.undo_rounded, size: 20),
                     color: Theme.of(context).colorScheme.outline,
                     tooltip: context.tr('undo'),
@@ -308,7 +351,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => SummaryScreen(set: set),
+        // Хранилище передаём явно: иначе сводка пошла бы в глобальную
+        // базу, и экран нельзя было бы проверить тестом.
+        builder: (_) => SummaryScreen(set: set, store: app.store),
       ));
       if (mounted) setState(() {});
     });
@@ -407,6 +452,45 @@ class _WaitingView extends StatelessWidget {
             TextButton(
               onPressed: onOpenEarly,
               child: Text(context.tr('openEarly')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Набор пройден, сводка уже показана.
+class _SetDoneView extends StatelessWidget {
+  const _SetDoneView({required this.timeText, required this.onMore});
+
+  final String timeText;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.task_alt_rounded,
+                size: 72, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(height: 20),
+            Text(context.tr('setDoneTitle'),
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              context.tr('setDoneBody', {'time': timeText}),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 28),
+            FilledButton.icon(
+              onPressed: onMore,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: Text(context.tr('oneMore')),
             ),
           ],
         ),

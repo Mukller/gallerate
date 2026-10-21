@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/l10n.dart';
+import '../../ui/list_error_view.dart';
 import '../../core/rating_style.dart';
+import '../../data/models.dart';
 import '../../data/db.dart';
 import '../../data/rating_store.dart';
 import '../../logic/app_state.dart';
@@ -26,7 +28,7 @@ class _StatsScreenState extends State<StatsScreen> {
   /// грузить в [initState] означало бы считать статистику для невидимого
   /// экрана при каждом старте.
   Future<_Bundle>? _future;
-  int? _lastSeenTotal;
+  String? _lastSeenTotal;
 
   RatingStore get _store => widget.store ?? AppDb.instance;
 
@@ -47,7 +49,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final counts = await db.ratingCounts();
     var likes = 0, dislikes = 0, skips = 0;
     counts.forEach((rating, n) {
-      if (rating >= 6) {
+      if (isKeepRating(rating)) {
         likes += n;
       } else {
         dislikes += n;
@@ -59,7 +61,12 @@ class _StatsScreenState extends State<StatsScreen> {
     final now = DateTime.now();
     final last14 = <_DayValue>[];
     for (var i = 13; i >= 0; i--) {
-      final d = now.subtract(Duration(days: i));
+      // Календарная арифметика, а не вычитание Duration: в сутках бывает
+      // 23 или 25 часов (перевод времени), и subtract от текущего момента
+      // даёт 23:00 или 01:00 соседнего дня — ключ дня перестаёт
+      // совпадать с календарным, и один из 14 столбцов показывал бы
+      // чужой день. Так же сделано в AppDb при подсчёте серии.
+      final d = DateTime(now.year, now.month, now.day - i);
       final key = AppDb.dayKey(d);
       final s = stats[key];
       last14.add(_DayValue(day: d, rated: s?.ratedTotal ?? 0));
@@ -79,7 +86,11 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget build(BuildContext context) {
     // Статистика должна обновляться сразу после новых оценок,
     // а не только по pull-to-refresh.
-    final seen = context.watch<AppState>().seenTotal;
+    final app = context.watch<AppState>();
+    // Сигнал обновления — пара «сколько оценено + ревизия данных»:
+    // переоценка не меняет количество оцененных фото, но меняет их
+    // распределение по дням и по оценкам.
+    final seen = '${app.seenTotal}:${app.dataRevision}';
     final visible = context.isTabVisible(TabIndex.stats);
     // Статистика обновляется сама после новых оценок, а не только по
     // pull-to-refresh. Первый показ — единственная причина для загрузки:
@@ -97,6 +108,12 @@ class _StatsScreenState extends State<StatsScreen> {
     return FutureBuilder<_Bundle>(
       future: future,
       builder: (context, snap) {
+        if (snap.hasError) {
+          return ListErrorView(
+            onRetry: _reload,
+            detail: '${snap.error}',
+          );
+        }
         if (!snap.hasData) {
           if (future == null) return const SizedBox.shrink();
           return const Center(child: CircularProgressIndicator());

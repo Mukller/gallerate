@@ -111,6 +111,76 @@ void main() {
     });
   });
 
+  group('доменные правила оценки', () {
+    test('оценка вне диапазона отвергается', () async {
+      // Раньше значение вне 0..10 могло попасть в бату (например, из
+      // импорта) и молча считаться «оставленным» в одних отчётах.
+      expect(
+        () => AppDb.instance.markSeen('a1', 42),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => AppDb.instance.markSeen('a1', -3),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('граница «оставить» одна на всё приложение', () {
+      expect(keepFrom, 6);
+      expect(isKeepRating(6), isTrue);
+      expect(isKeepRating(5), isFalse);
+      // 0 — пропуск: не «оставлен» и не «на удаление».
+      expect(isKeepRating(0), isFalse);
+      expect(isDeleteRating(0), isFalse);
+      expect(isDeleteRating(5), isTrue);
+      expect(isDeleteRating(6), isFalse);
+    });
+  });
+
+  group('круговой экспорт → импорт', () {
+    // Регрессия: флаги deleted/sorted и дата съёмки при импорте молча
+    // терялись. Уже удалённое фото «оживало» и снова попадало в очередь
+    // уборки, уже разложенное — копировалось в папку оценки второй раз,
+    // а сортировка по дате съёмки переставала работать.
+    test('флаги и дата съёмки переносятся', () async {
+      await AppDb.instance.markSeen('a1', 8, takenAt: 1000);
+      await AppDb.instance.markDeleted(['a1']);
+      await AppDb.instance.markSeen('a2', 6, takenAt: 2000);
+      await AppDb.instance.markSorted(['a2']);
+
+      final exported = await AppDb.instance.allRatingMaps();
+      await AppDb.instance.resetAll();
+
+      final (added, updated) = await AppDb.instance.upsertRatings(exported);
+      expect(added, 2);
+      expect(updated, 0);
+
+      // Удалённое осталось удалённым.
+      final deleted = await AppDb.instance.lowRatedRows();
+      expect(deleted.map((r) => r.id), isNot(contains('a1')),
+          reason: 'удалённое фото не должно «оживать» при импорте');
+      expect(await AppDb.instance.totalSeen(), 1);
+
+      // Разложенное осталось разложенным, дата съёмки — на месте.
+      final sorted = await AppDb.instance.sortedCount();
+      expect(sorted, 1);
+      final rows = await AppDb.instance.rowsByRating(6);
+      expect(rows.first.takenAt, 2000,
+          reason: 'дата съёмки должна пережить экспорт и импорт');
+    });
+
+    test('мусорный день не попадает в базу', () async {
+      await AppDb.instance.upsertRatings([
+        {'id': 'a1', 'rating': 5, 'day': 'вчера', 'rated_at': 1},
+      ]);
+
+      final rows = await AppDb.instance.lowRatedRows();
+      expect(rows, hasLength(1));
+      expect(rows.first.day, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+          reason: 'день должен быть ISO-датой, а не мусором из файла');
+    });
+  });
+
   group('сортировка по дате съёмки', () {
     test('дата съёмки сохраняется', () async {
       await AppDb.instance.markSeen('a1', 5, takenAt: 1000);

@@ -3,11 +3,19 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../../core/l10n.dart';
 import '../../data/gallery_service.dart';
+import '../../data/gallery_source.dart';
 
 class AlbumPickerScreen extends StatefulWidget {
-  const AlbumPickerScreen({super.key, required this.initiallySelected});
+  const AlbumPickerScreen({
+    super.key,
+    required this.initiallySelected,
+    this.gallery,
+  });
 
   final List<String> initiallySelected;
+
+  /// Галерея. По умолчанию — боевая; в тестах подставляется фейк.
+  final GallerySource? gallery;
 
   @override
   State<AlbumPickerScreen> createState() => _AlbumPickerScreenState();
@@ -23,7 +31,7 @@ class _AlbumPickerScreenState extends State<AlbumPickerScreen> {
     super.initState();
     _selected = widget.initiallySelected.toSet();
     _useAll = _selected.isEmpty;
-    _future = GalleryService.instance.albums();
+    _future = (widget.gallery ?? GalleryService.instance).albums();
   }
 
   @override

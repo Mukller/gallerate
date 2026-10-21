@@ -51,13 +51,21 @@ class FakeRatingStore implements RatingStore {
     int? takenAt,
   }) async {
     markSeenCalls++;
+    // Тот же контракт, что у боевой базы: недопустимая оценка —
+    // ошибка вызывающего кода, а не «тихое» значение в данных.
+    if (!isValidRating(rating)) {
+      throw ArgumentError.value(rating, 'rating', 'оценка вне диапазона 0..10');
+    }
     final prev = _photos[assetId];
     _photos[assetId] = (
       rating: rating,
       // Оценка не должна сбрасывать признаки «удалено» и «разложено».
       deleted: prev?.deleted ?? false,
       sorted: prev?.sorted ?? false,
-      day: prev?.day ?? day,
+      // День перезаписывается, как в боевой БД: переоценка переносит
+      // фото в сегодняшний день истории. Фейк раньше сохранял старый
+      // день и тем самым скрывал расхождение с production.
+      day: day,
       // Дата съёмки дописывается, только если её прислали: как и в базе,
       // неизвестная дата не должна затираться null-ом при переоценке.
       takenAt: takenAt ?? prev?.takenAt,
@@ -229,6 +237,12 @@ class FakeRatingStore implements RatingStore {
     return out;
   }
 
+  /// Когда задано — хранилище падает с этой ошибкой на чтении.
+  /// Нужно, чтобы проверить, что экраны показывают сообщение об ошибке,
+  /// а не вечный спиннер: раньше FutureBuilder не различал «грузится»
+  /// и «упало».
+  Object? failWith;
+
   /// Сколько фото с конкретной оценкой (0 = пропуск).
   @override
   Future<int> countByRating(int rating) async {
@@ -244,6 +258,7 @@ class FakeRatingStore implements RatingStore {
   @override
   Future<Map<String, DayStat>> dayStats() async {
     dayStatsCalls++;
+    if (failWith != null) throw failWith!;
     final out = <String, DayStat>{};
     for (final e in _photos.entries) {
       final p = e.value;
@@ -283,18 +298,27 @@ class FakeRatingStore implements RatingStore {
   @override
   Future<List<Map<String, Object?>>> allRatingMaps() async {
     allRatingMapsCalls++;
+    // Набор колонок совпадает с боевой БД: экспорт из фейка иначе не
+    // похож на настоящий, и round-trip через фейк терял данные.
     return [
       for (final e in _photos.entries)
         {
           'id': e.key,
           'rating': e.value.rating,
+          'day': e.value.day,
+          'rated_at': 1,
           'deleted': e.value.deleted ? 1 : 0,
           'sorted': e.value.sorted ? 1 : 0,
+          'taken_at': e.value.takenAt,
         }
     ];
   }
 
   /// Импорт: (добавлено, обновлено).
+  ///
+  /// Повторяет поведение боевой БД: диапазон оценки проверяется, а
+  /// флаги и дата съёмки переносятся. Иначе фейк принимал то, что
+  /// production отбрасывал, и тесты проверяли не тот путь.
   @override
   Future<(int, int)> upsertRatings(List<Map<String, Object?>> rows) async {
     upsertRatingsCalls++;
@@ -304,12 +328,22 @@ class FakeRatingStore implements RatingStore {
       final id = r['id'];
       final rating = r['rating'];
       if (id is! String || rating is! int) continue;
-      if (_photos.containsKey(id)) {
-        updated++;
-      } else {
+      if (rating < 0 || rating > 10) continue;
+      final prev = _photos[id];
+      final day = r['day'] as String? ?? defaultDay;
+      final takenAt = r['taken_at'] as int?;
+      _photos[id] = (
+        rating: rating,
+        deleted: (r['deleted'] as int? ?? 0) == 1,
+        sorted: (r['sorted'] as int? ?? 0) == 1,
+        day: day,
+        takenAt: takenAt ?? prev?.takenAt,
+      );
+      if (prev == null) {
         added++;
+      } else {
+        updated++;
       }
-      await markSeen(id, rating);
     }
     return (added, updated);
   }
@@ -320,6 +354,7 @@ class FakeRatingStore implements RatingStore {
     int rating, {
     PhotoSort sort = PhotoSort.rating,
   }) async {
+    if (failWith != null) throw failWith!;
     final rows = _rows.where((r) => r.rating == rating).toList();
     return _sorted(rows, sort,
         byRating: (a, b) => b.ratedAt.compareTo(a.ratedAt));
@@ -330,6 +365,7 @@ class FakeRatingStore implements RatingStore {
   Future<List<PhotoRow>> lowRatedRows({
     PhotoSort sort = PhotoSort.rating,
   }) async {
+    if (failWith != null) throw failWith!;
     final rows = _rows.where((r) => r.rating >= 1 && r.rating <= 5).toList();
     return _sorted(rows, sort, byRating: (a, b) {
       final byRating = a.rating.compareTo(b.rating);

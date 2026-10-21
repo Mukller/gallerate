@@ -57,6 +57,16 @@ class AppState extends ChangeNotifier {
   /// по той же карточке игнорируется.
   bool inFlightRating = false;
 
+  /// Последняя ошибка, которую нужно показать пользователю.
+  /// Экраны показывают её и сбрасывают. Пусто — ошибок нет.
+  String? lastError;
+
+  /// Счётчик изменений данных. Нужен потому, что сигналом обновления
+  /// «Истории» и «Статистики» служил seenTotal, а он не меняется при
+  /// переоценке: фото уже было посчитано, изменилась только его оценка —
+  /// и экраны молча показывали устаревшие данные до следующей оценки.
+  int dataRevision = 0;
+
   int galleryTotal = 0;
   int seenTotal = 0;
   int currentStreak = 0;
@@ -228,6 +238,12 @@ class AppState extends ChangeNotifier {
       if (set != null && SetDecision.shouldCloseStaleSet(set.day, today)) {
         await _store.completeSet(set.id);
         set = null;
+        // Закрытый вчерашний набор нужно снять и из памяти. Раньше здесь
+        // обнулялась только локальная переменная, и приложение, оставленное
+        // открытым через полночь, продолжало показывать вчерашний набор и
+        // записывать оценки в сегодняшнюю статистику. Поведение зависело
+        // от того, перезапускал ли пользователь приложение.
+        activeSet = null;
       }
 
       final mustGenerate = SetDecision.shouldGenerate(
@@ -347,6 +363,21 @@ class AppState extends ChangeNotifier {
         currentStreak = await _store.currentStreak();
         hasStreakLoaded = true;
       }
+      dataRevision++;
+    } catch (e) {
+      // Карточка уже улетела с экрана, но оценка могла не записаться —
+      // тогда пользователь увидит то же фото снова и решит, что свайп не
+      // засчитался. Ещё хуже: оценка записалась, а курсор — нет, и фото
+      // «переоценивается» по кругу. Откатываем запись, чтобы состояние
+      // в памяти и в БД совпало, и сообщаем о сбое.
+      debugPrint('rate failed: $e');
+      try {
+        await _store.clearRating(id);
+      } catch (_) {
+        // Откат не удался — сообщаем и об этом, молчать нельзя.
+        debugPrint('rate rollback failed');
+      }
+      lastError = L10n.tr(localeCode, 'rateFailed');
     } finally {
       inFlightRating = false;
     }
@@ -390,6 +421,7 @@ class AppState extends ChangeNotifier {
     try {
       await _store.clearRating(id);
       await _store.advanceCursor(set.id, index);
+      dataRevision++;
       activeSet = set.copyWith(cursor: index);
       if (seenTotal > 0) seenTotal -= 1;
       // Серия могла измениться: если отменённый день был единственным
@@ -467,6 +499,7 @@ class AppState extends ChangeNotifier {
   /// навсегда — ошибочный свайп нельзя было исправить.
   Future<void> rerate(String assetId, int rating) async {
     await _store.markSeen(assetId, rating.clamp(1, 10));
+    dataRevision++;
     await refreshCollections();
   }
 

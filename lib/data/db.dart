@@ -83,6 +83,13 @@ class AppDb implements RatingStore {
 
   @override
   Future<void> markSeen(String assetId, int rating, {int? takenAt}) async {
+    // Проверка в единственной точке записи. Раньше диапазон 0..10
+    // соблюдался в вызывающем коде, в импорте и ещё в одном месте —
+    // значение вне диапазона попадало в базу и молча считалось
+    // «оставленным» в одних отчётах и не попадало в другие.
+    if (!isValidRating(rating)) {
+      throw ArgumentError.value(rating, 'rating', 'оценка вне диапазона 0..10');
+    }
     final d = await db;
     final now = DateTime.now().millisecondsSinceEpoch;
     final day = dayKey(DateTime.now());
@@ -406,7 +413,12 @@ class AppDb implements RatingStore {
   }
 
   /// Импорт оценок. Возвращает (добавлено, обновлено).
-  /// Существующие записи обновляются без сброса sorted/deleted.
+  ///
+  /// Флаги `deleted`, `sorted` и дата съёмки `taken_at` переносятся тоже:
+  /// раньше они молча терялись, и круговой экспорт-импорт «оживлял» уже
+  /// удалённые фото (фото, которого на устройстве уже нет, снова попадало
+  /// в очередь уборки), сбрасывал признак «разложено» (фото копировалось
+  /// в папку оценки второй раз) и ломало сортировку по дате съёмки.
   @override
   Future<(int, int)> upsertRatings(List<Map<String, Object?>> rows) async {
     final d = await db;
@@ -419,13 +431,23 @@ class AppDb implements RatingStore {
       final rating = r['rating'];
       if (id is! String || rating is! int) continue;
       if (rating < 0 || rating > 10) continue;
-      final day = (r['day'] as String?) ?? dayKey(DateTime.now());
+      final day = _importDay(r['day']);
       final ratedAt =
           (r['rated_at'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+      final takenAt = r['taken_at'] as int?;
+      final deleted = (r['deleted'] as int? ?? 0) == 1;
+      final sorted = (r['sorted'] as int? ?? 0) == 1;
       if (existing.contains(id)) {
         batch.update(
           'photos',
-          {'rating': rating, 'day': day, 'rated_at': ratedAt},
+          {
+            'rating': rating,
+            'day': day,
+            'rated_at': ratedAt,
+            'deleted': deleted ? 1 : 0,
+            'sorted': sorted ? 1 : 0,
+            if (takenAt != null) 'taken_at': takenAt,
+          },
           where: 'id = ?',
           whereArgs: [id],
         );
@@ -436,14 +458,26 @@ class AppDb implements RatingStore {
           'rating': rating,
           'day': day,
           'rated_at': ratedAt,
-          'deleted': 0,
-          'sorted': 0,
+          'deleted': deleted ? 1 : 0,
+          'sorted': sorted ? 1 : 0,
+          'taken_at': takenAt,
         });
         added++;
       }
     }
     await batch.commit(noResult: true);
     return (added, updated);
+  }
+
+  /// День из импорта: только ISO-дата, иначе — сегодня.
+  ///
+  /// Произвольная строка в колонке day тихо ломала подсчёт серии
+  /// (такой день не сопоставлялся с календарём) и историю (день
+  /// показывался под именем из файла).
+  String _importDay(Object? raw) {
+    final v = raw as String?;
+    if (v != null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(v)) return v;
+    return dayKey(DateTime.now());
   }
 
   @override

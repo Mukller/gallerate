@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/models.dart' show isDeleteRating, isKeepRating;
+
 /// Единый источник правды для отображения оценок 1..10.
 ///
 /// Раньше `_colorFor` и `_emoji` были продублированы в swipe_screen,
@@ -37,9 +39,10 @@ class RatingStyle {
   static String? emojiFor(int rating) => emoji[rating];
 
   /// Оценка 6..10 — «оставить», 1..5 — «на удаление», 0 — пропуск.
-  static bool isKeep(int rating) => rating >= 6;
+  /// Правило живёт в data/models.dart — там, где его читает и база.
+  static bool isKeep(int rating) => isKeepRating(rating);
 
-  static bool isDelete(int rating) => rating >= 1 && rating <= 5;
+  static bool isDelete(int rating) => isDeleteRating(rating);
 
   /// Бейдж оценки поверх миниатюры.
   /// [color] переопределяет цвет шкалы (например, зелёный = уже разложено).

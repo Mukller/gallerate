@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import '../../core/rating_style.dart';
+import '../../data/models.dart' show keepFrom;
 import 'photo_viewer.dart';
 
 enum _DeckPhase { idle, dragging, flying, returning, skipping }
@@ -51,6 +52,15 @@ class SwipeCardDeckState extends State<SwipeCardDeck>
   double get _maxDrag => _w * 0.92;
 
   bool get _busy => _phase != _DeckPhase.idle && _phase != _DeckPhase.dragging;
+
+  /// Идёт ли анимация вылета карточки.
+  ///
+  /// Пока карточка летит, оценка ещё не доставлена: она передаётся в
+  /// [onRated] только в момент завершения анимации. Если в этот момент
+  /// отменить предыдущую оценку, список пересоберётся, колода сбросит
+  /// состояние (`didUpdateWidget`) и неотправленная оценка пропадёт
+  /// молча. Поэтому действия, меняющие набор, в этот момент запрещены.
+  bool get isBusy => _busy;
 
   @override
   void initState() {
@@ -171,11 +181,11 @@ class SwipeCardDeckState extends State<SwipeCardDeck>
     final t = ((drag.dx.abs() - _commitStart) / (_maxDrag - _commitStart))
         .clamp(0.0, 0.9999);
     if (drag.dx > 0) {
-      // Вправо — хорошие: 6..10
-      return (6 + (t * 5).floor()).clamp(1, 10);
+      // Вправо — хорошие: keepFrom..10
+      return (keepFrom + (t * 5).floor()).clamp(1, 10);
     } else {
-      // Влево — плохие: 5..1
-      return (5 - (t * 5).floor()).clamp(1, 10);
+      // Влево — плохие: keepFrom-1..1
+      return (keepFrom - 1 - (t * 5).floor()).clamp(1, 10);
     }
   }
 

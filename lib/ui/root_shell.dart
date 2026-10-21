@@ -40,10 +40,10 @@ class _RootShellState extends State<RootShell> with WidgetsBindingObserver {
   /// заново при каждой перестройке.
   List<Widget> _screensFor(AppState app) => [
         const SwipeScreen(),
-        BestScreen(store: app.store, gallery: app.gallery),
-        CleanupScreen(store: app.store, gallery: app.gallery),
-        HistoryScreen(store: app.store),
-        StatsScreen(store: app.store),
+        BestScreen(store: widget.store ?? app.store, gallery: app.gallery),
+        CleanupScreen(store: widget.store ?? app.store, gallery: app.gallery),
+        HistoryScreen(store: widget.store ?? app.store),
+        StatsScreen(store: widget.store ?? app.store),
       ];
 
   @override

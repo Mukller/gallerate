@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/l10n.dart';
+import '../../ui/list_error_view.dart';
 import '../../data/db.dart';
 import '../../data/models.dart';
 import '../../data/rating_store.dart';
@@ -26,7 +27,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// поэтому грузить в [initState] нельзя: сводка по всем дням — тяжёлый
   /// запрос, и он выполнялся бы для невидимого экрана.
   Future<List<_DayBlock>>? _future;
-  int? _lastSeenTotal;
+  String? _lastSeenTotal;
 
   RatingStore get _store => widget.store ?? AppDb.instance;
 
@@ -67,7 +68,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final seen = context.watch<AppState>().seenTotal;
+    final app = context.watch<AppState>();
+    // Сигнал обновления — пара «сколько оценено + ревизия данных»:
+    // переоценка не меняет количество оцененных фото, но меняет их
+    // распределение по дням и по оценкам.
+    final seen = '${app.seenTotal}:${app.dataRevision}';
     final visible = context.isTabVisible(TabIndex.history);
     // Первый показ — единственная причина, по которой экран что-то грузит:
     // initState намеренно не трогает базу.
@@ -86,6 +91,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return FutureBuilder<List<_DayBlock>>(
       future: future,
       builder: (context, snap) {
+        if (snap.hasError) {
+          return ListErrorView(
+            onRetry: _reload,
+            detail: '${snap.error}',
+          );
+        }
         if (!snap.hasData) {
           if (future == null) return const SizedBox.shrink();
           return const Center(child: CircularProgressIndicator());

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/l10n.dart';
+import '../../ui/list_error_view.dart';
 import '../../core/rating_style.dart';
 import '../../data/db.dart';
 import '../../data/rating_store.dart';
@@ -66,21 +67,22 @@ class _CleanupScreenState extends State<CleanupScreen> {
 
   GallerySource get _gallery => widget.gallery ?? GalleryService.instance;
 
-  late Future<List<PhotoRow>> _future;
+  /// null — данные ещё не запрашивались. Экран живёт в [IndexedStack] и
+  /// строится при запуске приложения, когда его вкладка ещё не выбрана:
+  /// грузить в initState означало бы читать базу для невидимого экрана.
+  Future<List<PhotoRow>>? _future;
   final Set<String> _selected = {};
   bool _deleting = false;
   List<PhotoRow> _rows = const [];
-  int _lastSeenTotal = -1;
+
+  /// Снимок сигнала обновления. null — ещё не было ни одного обновления:
+  /// первая сборка не должна порождать второй запрос (он отменял бы первый,
+  /// и ошибка первого осталась бы без слушателя).
+  String? _lastSeenTotal;
 
   /// Порядок очереди уборки. По дате съёмки — от старых к новым: «выкинуть
   /// старые кадры» — про возраст снимка, а не про дату оценки.
   PhotoSort _sort = PhotoSort.rating;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _loadRows();
-  }
 
   /// Читаем список и сразу обновляем _rows, чтобы нижняя панель
   /// («Выбрать все») считала по актуальным данным.
@@ -150,13 +152,30 @@ class _CleanupScreenState extends State<CleanupScreen> {
 
     setState(() => _deleting = true);
     final ids = _selected.toList(growable: false);
-    final failed = await _gallery.deleteAssets(ids);
-    final deletedIds = ids.where((id) => !failed.contains(id)).toList();
-    await _store.markDeleted(deletedIds);
-    await app.refreshCollections();
+    // Удаление необратимо, и часть цепочки пишет в БД. Любая ошибка
+    // обязана быть видна: раньше исключение из markDeleted оставляло
+    // _deleting = true навсегда — кнопка превращалась в вечный спиннер,
+    // а пользователь не получал ни слова.
+    List<String> deletedIds = const [];
+    List<String> failed = ids;
+    try {
+      failed = await _gallery.deleteAssets(ids);
+      deletedIds = ids.where((id) => !failed.contains(id)).toList();
+      await _store.markDeleted(deletedIds);
+      await app.refreshCollections();
+    } catch (e) {
+      debugPrint('delete failed: $e');
+      if (!mounted) return;
+      // Файлы с устройства могли уже удалиться, а запись в БД — нет.
+      // Говорим прямо: что удалилось, что осталось.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.tr('deleteFailed'))),
+      );
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
 
     if (!mounted) return;
-    setState(() => _deleting = false);
     if (deletedIds.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -182,9 +201,17 @@ class _CleanupScreenState extends State<CleanupScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     // Новые оценки меняют очередь — перечитываем.
-    if (app.seenTotal != _lastSeenTotal &&
+    // Первая загрузка — только когда вкладка видима.
+    if (context.isTabVisible(TabIndex.cleanup) && _future == null) {
+      _future = _loadRows();
+    }
+
+    final signal = '${app.seenTotal}:${app.dataRevision}';
+    if (_lastSeenTotal == null) {
+      _lastSeenTotal = signal;
+    } else if (_lastSeenTotal != signal &&
         context.isTabVisible(TabIndex.cleanup)) {
-      _lastSeenTotal = app.seenTotal;
+      _lastSeenTotal = signal;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _reload();
       });
@@ -197,7 +224,14 @@ class _CleanupScreenState extends State<CleanupScreen> {
             child: FutureBuilder<List<PhotoRow>>(
               future: _future,
               builder: (context, snap) {
+                if (snap.hasError) {
+                  return ListErrorView(
+                    onRetry: _reload,
+                    detail: '${snap.error}',
+                  );
+                }
                 if (!snap.hasData) {
+                  if (_future == null) return const SizedBox.shrink();
                   return const Center(child: CircularProgressIndicator());
                 }
                 final rows = snap.data!;

@@ -5,6 +5,7 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/l10n.dart';
+import '../../ui/list_error_view.dart';
 import '../../core/rating_style.dart';
 import '../../data/db.dart';
 import '../../data/rating_store.dart';
@@ -41,8 +42,13 @@ class _BestScreenState extends State<BestScreen> {
   /// Порядок фото в сетке: по оценке или по дате съёмки (от старых к новым).
   PhotoSort _sort = PhotoSort.rating;
   int _selected = 10;
-  late Future<List<PhotoRow>> _gridFuture;
-  int _lastSeenTotal = -1;
+
+  /// null — сетка ещё не запрашивалась (см. комментарий в
+  /// [CleanupScreen._future]).
+  Future<List<PhotoRow>>? _gridFuture;
+
+  /// Снимок сигнала обновления; null — обновлений ещё не было.
+  String? _lastSeenTotal;
   bool _sorting = false;
   int _sortProgress = 0;
   int _sortTotal = 0;
@@ -209,9 +215,21 @@ class _BestScreenState extends State<BestScreen> {
     final app = context.watch<AppState>();
     // Перечитываем только когда вкладка видима: IndexedStack держит все
     // экраны живыми, иначе каждая оценка дёргала бы БД на «Лучших».
-    if (app.seenTotal != _lastSeenTotal &&
+    // Первая загрузка — только когда вкладка видима: экран строится
+    // при запуске приложения, когда выбрана другая вкладка.
+    if (context.isTabVisible(TabIndex.best) && _gridFuture == null) {
+      _gridFuture = _store.rowsByRating(_selected, sort: _sort);
+      _store.ratingCounts().then((c) {
+        if (mounted) setState(() => _counts = c);
+      });
+    }
+
+    final signal = '${app.seenTotal}:${app.dataRevision}';
+    if (_lastSeenTotal == null) {
+      _lastSeenTotal = signal;
+    } else if (_lastSeenTotal != signal &&
         context.isTabVisible(TabIndex.best)) {
-      _lastSeenTotal = app.seenTotal;
+      _lastSeenTotal = signal;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _reload();
       });
@@ -260,7 +278,14 @@ class _BestScreenState extends State<BestScreen> {
             child: FutureBuilder<List<PhotoRow>>(
               future: _gridFuture,
               builder: (context, snap) {
+                if (snap.hasError) {
+                  return ListErrorView(
+                    onRetry: _reload,
+                    detail: '${snap.error}',
+                  );
+                }
                 if (!snap.hasData) {
+                  if (_gridFuture == null) return const SizedBox.shrink();
                   return const Center(child: CircularProgressIndicator());
                 }
                 final rows = snap.data!;

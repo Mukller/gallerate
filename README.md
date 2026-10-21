@@ -40,6 +40,8 @@
 - **Ежедневное напоминание** о новом сете в выбранное время
 - Экспорт/импорт оценок в JSON через системный диалог файла,
   очистка оценок, полный сброс
+- Если база недоступна — не вечный спиннер, а сообщение с кнопкой
+  «повторить»
 
 ## Запуск
 
@@ -58,7 +60,7 @@ flutter run
 ```powershell
 flutter analyze                              # 0 ошибок, 0 предупреждений
 dart format --set-exit-if-changed lib test   # форматирование
-flutter test                                 # 288 тестов
+flutter test                                 # 301 тест
 flutter build apk --release --split-per-abi # APK по архитектурам
 flutter build appbundle                      # для публикации в Google Play
 ```

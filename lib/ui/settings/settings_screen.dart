@@ -13,6 +13,11 @@ import 'album_picker_screen.dart';
 
 export 'album_picker_screen.dart';
 
+/// Версия приложения. Держится здесь одной строкой и сверяется тестом
+/// с pubspec.yaml — раньше в интерфейсе было написано 0.3.0, пока в
+/// pubspec уже стояло 0.4.0+4, и пользователь видел устаревшую версию.
+const String appVersion = '0.5.0';
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, this.store});
 
@@ -340,7 +345,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              '${context.tr('version')} 0.3.0',
+              '${context.tr('version')} $appVersion',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall

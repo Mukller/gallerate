@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gallerate/logic/app_state.dart';
 import 'package:gallerate/ui/swipe/card_deck.dart';
+import 'package:gallerate/ui/summary/summary_screen.dart';
 import 'package:gallerate/ui/swipe/photo_viewer.dart';
 import 'package:gallerate/ui/swipe/swipe_screen.dart';
 import 'package:provider/provider.dart';
@@ -253,6 +254,36 @@ void main() {
 
       expect(find.byIcon(Icons.undo_rounded), findsNothing);
     });
+
+    // Регрессия: оценка передаётся в момент завершения анимации вылета
+    // (320 мс). Отмена в этот момент пересобирала набор, колода сбрасывала
+    // состояние, и оценка пропадала молча: карточка улетела, в базе
+    // ничего не записалось.
+    testWidgets('отмена во время вылета карточки не съедает новую оценку',
+        (tester) async {
+      final app = await stateWithSet(['a1', 'a2', 'a3']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      // Первая оценка — чтобы появилась кнопка отмены.
+      await tester.tap(find.text('8'));
+      await flyOut(tester);
+      expect(app.activeSet!.cursor, 1);
+
+      // Вторая оценка: жмём чип и, пока карточка летит, жмём «отменить».
+      await tester.tap(find.text('6'));
+      await tester.pump(); // анимация только началась
+      expect(find.byIcon(Icons.undo_rounded), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.undo_rounded));
+      await flyOut(tester);
+
+      // Оценка второй карточки обязана сохраниться: отмена была
+      // отклонена, пока карточка летела.
+      expect(app.activeSet!.cursor, 2,
+          reason: 'оценка не должна пропасть из-за отмены в полёте');
+      expect(app.activeSet!.currentId, 'a3');
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('карточка: дата и просмотр', () {
@@ -310,6 +341,75 @@ void main() {
 
       expect(find.byType(PhotoViewerPage), findsNothing);
       expect(app.activeSet!.cursor, 0);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('набор закрыт', () {
+    testWidgets('после сводки экран не остаётся с вечным спиннером',
+        (tester) async {
+      final app = await stateWithSet(['a1']);
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      // Оцениваем единственное фото — набор закрывается, открывается сводка.
+      await tester.tap(find.text('6'));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await settle(tester);
+      expect(find.byType(SummaryScreen), findsOneWidget);
+
+      // Пользователь возвращается на главный экран (кнопка «Убрать»).
+      Navigator.of(tester.element(find.byType(SummaryScreen))).pop();
+      await tester.pump();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await settle(tester);
+
+      // Экран должен быть пригодным: без вечного спиннера и с кнопкой.
+      expect(find.byType(CircularProgressIndicator), findsNothing,
+          reason: 'после сводки главный экран не должен крутить спиннер');
+      expect(find.text('That\'s the set for today'), findsOneWidget);
+      expect(find.text('One more set'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('кнопка «ещё сет» создаёт новый набор', (tester) async {
+      // В галерее два фото, а в наборе одно: после его прохождения остаётся
+      // неоценённое фото, из которого можно собрать следующий набор.
+      final gallery = FakeGallery(ids: ['a1', 'a2']);
+      final app = AppState(gallery: gallery, store: FakeRatingStore());
+      app.dailyCount = 1;
+      app.phase = BootPhase.ready;
+      PhotoManagerMock.knownIds.addAll(['a1', 'a2']);
+      await app.ensureTodaySet(force: true);
+
+      await tester.pumpWidget(host(app));
+      await settle(tester);
+
+      await tester.tap(find.text('6'));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await settle(tester);
+      Navigator.of(tester.element(find.byType(SummaryScreen))).pop();
+      await tester.pump();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await settle(tester);
+
+      await tester.tap(find.text('One more set'));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await settle(tester);
+
+      expect(app.activeSet, isNotNull);
+      expect(app.activeSet!.hasPending, isTrue,
+          reason: 'после «ещё сет» должен быть набор с фото');
       expect(tester.takeException(), isNull);
     });
   });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/l10n.dart';
+import '../../ui/list_error_view.dart';
 import '../../data/db.dart';
 import '../../data/models.dart';
 import '../../data/rating_store.dart';
@@ -43,7 +44,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
       } else {
         sum += r;
         n++;
-        if (r >= 6) {
+        if (isKeepRating(r)) {
           liked++;
         } else {
           disliked++;
@@ -78,6 +79,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
         child: FutureBuilder<_SummaryData>(
           future: _future,
           builder: (context, snap) {
+            if (snap.hasError) {
+              return ListErrorView(
+                onRetry: () => setState(() => _future = _load()),
+                detail: '${snap.error}',
+              );
+            }
             if (!snap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
