@@ -27,6 +27,40 @@ class CleanupScreen extends StatefulWidget {
   State<CleanupScreen> createState() => _CleanupScreenState();
 }
 
+/// Панель порядка: по оценке или по дате съёмки.
+class _SortBar extends StatelessWidget {
+  const _SortBar({required this.sort, required this.onToggle});
+
+  final PhotoSort sort;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final byDate = sort == PhotoSort.takenDate;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              byDate
+                  ? context.tr('sortOldestFirst')
+                  : context.tr('sortByRating'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          IconButton(
+            onPressed: onToggle,
+            icon: Icon(byDate ? Icons.event : Icons.star_outline),
+            tooltip: context.tr('sortToggle'),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CleanupScreenState extends State<CleanupScreen> {
   RatingStore get _store => widget.store ?? AppDb.instance;
 
@@ -38,6 +72,10 @@ class _CleanupScreenState extends State<CleanupScreen> {
   List<PhotoRow> _rows = const [];
   int _lastSeenTotal = -1;
 
+  /// Порядок очереди уборки. По дате съёмки — от старых к новым: «выкинуть
+  /// старые кадры» — про возраст снимка, а не про дату оценки.
+  PhotoSort _sort = PhotoSort.rating;
+
   @override
   void initState() {
     super.initState();
@@ -47,7 +85,7 @@ class _CleanupScreenState extends State<CleanupScreen> {
   /// Читаем список и сразу обновляем _rows, чтобы нижняя панель
   /// («Выбрать все») считала по актуальным данным.
   Future<List<PhotoRow>> _loadRows() async {
-    final rows = await _store.lowRatedRows();
+    final rows = await _store.lowRatedRows(sort: _sort);
     if (mounted) setState(() => _rows = rows);
     return rows;
   }
@@ -64,6 +102,16 @@ class _CleanupScreenState extends State<CleanupScreen> {
     if (picked == null || !mounted) return;
     await context.read<AppState>().rerate(assetId, picked);
     _reload();
+  }
+
+  /// Переключить порядок: по оценке или по дате съёмки.
+  void _toggleSort() {
+    setState(() {
+      _sort =
+          _sort == PhotoSort.rating ? PhotoSort.takenDate : PhotoSort.rating;
+      _selected.clear();
+      _future = _loadRows();
+    });
   }
 
   void _toggleSelectAll() {
@@ -142,101 +190,111 @@ class _CleanupScreenState extends State<CleanupScreen> {
       });
     }
     return Scaffold(
-      body: FutureBuilder<List<PhotoRow>>(
-        future: _future,
-        builder: (context, snap) {
-          if (!snap.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final rows = snap.data!;
-          if (rows.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.cleaning_services_outlined,
-                        size: 72, color: Theme.of(context).colorScheme.primary),
-                    const SizedBox(height: 16),
-                    Text(context.tr('cleanupEmptyTitle'),
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 8),
-                    Text(
-                      context.tr('cleanupEmptyBody'),
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-          return GridView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-            ),
-            itemCount: rows.length,
-            itemBuilder: (context, i) {
-              final row = rows[i];
-              final isSelected = _selected.contains(row.id);
-              return GestureDetector(
-                onTap: () => setState(() {
-                  isSelected ? _selected.remove(row.id) : _selected.add(row.id);
-                }),
-                // Долгое нажатие — переоценка. Особенно важно здесь:
-                // фото с оценкой 1-5 идёт на удаление, и ошибиться
-                // в оценке = потерять хорошее фото.
-                onLongPress: () => _rerate(row.id, row.rating),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: AssetEntityImageLoader(
-                        // Ключ с идентификатором: по нему виджет-тест
-                        // выбирает нужное фото, а не «первое попавшееся».
-                        key: ValueKey('cleanup_photo_${row.id}'),
-                        assetId: row.id,
-                      ),
-                    ),
-                    Positioned(
-                      top: 6,
-                      left: 6,
-                      child: RatingStyle.badge(row.rating),
-                    ),
-                    if (isSelected)
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
-                          color: Colors.black38,
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.error,
-                            width: 3,
+      body: Column(
+        children: [
+          _SortBar(sort: _sort, onToggle: _toggleSort),
+          Expanded(
+            child: FutureBuilder<List<PhotoRow>>(
+              future: _future,
+              builder: (context, snap) {
+                if (!snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final rows = snap.data!;
+                if (rows.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.cleaning_services_outlined,
+                              size: 72,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(height: 16),
+                          Text(context.tr('cleanupEmptyTitle'),
+                              style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 8),
+                          Text(
+                            context.tr('cleanupEmptyBody'),
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                        ),
-                      ),
-                    Positioned(
-                      top: 6,
-                      right: 6,
-                      child: Icon(
-                        isSelected
-                            ? Icons.check_circle_rounded
-                            : Icons.radio_button_unchecked,
-                        color: isSelected
-                            ? Theme.of(context).colorScheme.error
-                            : Colors.white70,
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
+                  );
+                }
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 6,
+                    crossAxisSpacing: 6,
+                  ),
+                  itemCount: rows.length,
+                  itemBuilder: (context, i) {
+                    final row = rows[i];
+                    final isSelected = _selected.contains(row.id);
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        isSelected
+                            ? _selected.remove(row.id)
+                            : _selected.add(row.id);
+                      }),
+                      // Долгое нажатие — переоценка. Особенно важно здесь:
+                      // фото с оценкой 1-5 идёт на удаление, и ошибиться
+                      // в оценке = потерять хорошее фото.
+                      onLongPress: () => _rerate(row.id, row.rating),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: AssetEntityImageLoader(
+                              // Ключ с идентификатором: по нему виджет-тест
+                              // выбирает нужное фото, а не «первое попавшееся».
+                              key: ValueKey('cleanup_photo_${row.id}'),
+                              assetId: row.id,
+                            ),
+                          ),
+                          Positioned(
+                            top: 6,
+                            left: 6,
+                            child: RatingStyle.badge(row.rating),
+                          ),
+                          if (isSelected)
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                color: Colors.black38,
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.error,
+                                  width: 3,
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: Icon(
+                              isSelected
+                                  ? Icons.check_circle_rounded
+                                  : Icons.radio_button_unchecked,
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.error
+                                  : Colors.white70,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: _selected.isEmpty
           ? null

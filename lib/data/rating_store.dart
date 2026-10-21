@@ -10,7 +10,11 @@ import 'models.dart';
 abstract class RatingStore {
   /// Записать оценку ассета. Повторная оценка не должна сбрасывать
   /// признаки «разложено» и «удалено».
-  Future<void> markSeen(String assetId, int rating);
+  ///
+  /// [takenAt] — когда сделан снимок (мс с эпохи). Необязателен: без него
+  /// дата съёмки неизвестна, и фото не сможет попасть в сортировку
+  /// по возрасту.
+  Future<void> markSeen(String assetId, int rating, {int? takenAt});
 
   /// Идентификаторы всех ассетов, которым уже выставлена оценка.
   Future<Set<String>> seenIds();
@@ -55,10 +59,11 @@ abstract class RatingStore {
   Future<Map<int, int>> ratingCounts();
 
   /// Фото с конкретной оценкой.
-  Future<List<PhotoRow>> rowsByRating(int rating);
+  Future<List<PhotoRow>> rowsByRating(int rating,
+      {PhotoSort sort = PhotoSort.rating});
 
   /// Фото с низкими оценками — очередь уборки.
-  Future<List<PhotoRow>> lowRatedRows();
+  Future<List<PhotoRow>> lowRatedRows({PhotoSort sort = PhotoSort.rating});
 
   /// Оценённые фото, ещё не разложенные по альбомам.
   Future<List<PhotoRow>> unsortedRatedRows();

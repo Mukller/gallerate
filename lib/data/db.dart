@@ -29,7 +29,7 @@ class AppDb implements RatingStore {
     final dir = await getDatabasesPath();
     return openDatabase(
       '$dir/$databaseName',
-      version: 3,
+      version: 4,
       onCreate: (d, v) async => _create(d),
       onUpgrade: (d, oldV, newV) async {
         if (oldV < 2) {
@@ -38,6 +38,13 @@ class AppDb implements RatingStore {
         }
         if (oldV < 3) {
           await _addSortedColumn(d);
+        }
+        if (oldV < 4) {
+          // Дата съёмки: нужна, чтобы сортировать «Лучшие» и очередь
+          // уборки по возрасту снимка, а не по дате оценки. Для старых строк
+          // останется NULL — их дата неизвестна, и в сортировке они встанут
+          // в конец, а не по случайному месту.
+          await d.execute('ALTER TABLE photos ADD COLUMN taken_at INTEGER');
         }
       },
     );
@@ -56,7 +63,8 @@ class AppDb implements RatingStore {
             day TEXT NOT NULL,
             rated_at INTEGER NOT NULL,
             deleted INTEGER NOT NULL DEFAULT 0,
-            sorted INTEGER NOT NULL DEFAULT 0
+            sorted INTEGER NOT NULL DEFAULT 0,
+            taken_at INTEGER
           )
         ''');
     await d.execute('CREATE INDEX idx_photos_day ON photos(day)');
@@ -74,7 +82,7 @@ class AppDb implements RatingStore {
   }
 
   @override
-  Future<void> markSeen(String assetId, int rating) async {
+  Future<void> markSeen(String assetId, int rating, {int? takenAt}) async {
     final d = await db;
     final now = DateTime.now().millisecondsSinceEpoch;
     final day = dayKey(DateTime.now());
@@ -82,7 +90,14 @@ class AppDb implements RatingStore {
     // флаги sorted/deleted, иначе фото снова попадёт в сортировку.
     final updated = await d.update(
       'photos',
-      {'rating': rating, 'day': day, 'rated_at': now},
+      {
+        'rating': rating,
+        'day': day,
+        'rated_at': now,
+        // Дата съёмки дописывается, только если её прислали: у старых строк
+        // её нет, и затирать её null-ом при переоценке нельзя.
+        if (takenAt != null) 'taken_at': takenAt,
+      },
       where: 'id = ?',
       whereArgs: [assetId],
     );
@@ -96,6 +111,7 @@ class AppDb implements RatingStore {
         'rated_at': now,
         'deleted': 0,
         'sorted': 0,
+        'taken_at': takenAt,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -119,26 +135,39 @@ class AppDb implements RatingStore {
   }
 
   @override
-  Future<List<PhotoRow>> rowsByRating(int rating) async {
+  Future<List<PhotoRow>> rowsByRating(int rating,
+      {PhotoSort sort = PhotoSort.rating}) async {
     final d = await db;
     final rows = await d.query(
       'photos',
       where: 'rating = ? AND deleted = 0',
       whereArgs: [rating],
-      orderBy: 'rated_at DESC',
+      orderBy: _orderBy(sort, fallback: 'rated_at DESC'),
     );
     return rows.map(PhotoRow.fromMap).toList();
   }
 
   @override
-  Future<List<PhotoRow>> lowRatedRows() async {
+  Future<List<PhotoRow>> lowRatedRows(
+      {PhotoSort sort = PhotoSort.rating}) async {
     final d = await db;
     final rows = await d.query(
       'photos',
       where: 'rating BETWEEN 1 AND 5 AND deleted = 0',
-      orderBy: 'rating ASC, rated_at DESC',
+      orderBy: _orderBy(sort, fallback: 'rating ASC, rated_at DESC'),
     );
     return rows.map(PhotoRow.fromMap).toList();
+  }
+
+  /// Порядок выдачи. Фото с неизвестной датой съёмки (старые строки базы)
+  /// уходят в конец: сортировать их «куда попало» бессмысленно.
+  String _orderBy(PhotoSort sort, {required String fallback}) {
+    switch (sort) {
+      case PhotoSort.takenDate:
+        return 'taken_at IS NULL, taken_at ASC, rated_at ASC';
+      case PhotoSort.rating:
+        return fallback;
+    }
   }
 
   @override

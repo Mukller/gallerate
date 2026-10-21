@@ -316,7 +316,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _applyRating(int rating) async {
+  Future<void> _applyRating(int rating, {int? takenAt}) async {
     final set = activeSet;
     if (set == null || !set.hasPending) return;
     if (inFlightRating) return;
@@ -329,7 +329,7 @@ class AppState extends ChangeNotifier {
     // вторая оценка просто терялась.
     inFlightRating = true;
     try {
-      await _store.markSeen(id, rating);
+      await _store.markSeen(id, rating, takenAt: takenAt);
       final cursor = set.cursor + 1;
       final isSetFinished = cursor >= set.assetIds.length;
       if (isSetFinished) {
@@ -353,7 +353,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> rateCurrent(int rating) => _applyRating(rating.clamp(0, 10));
+  /// Оценить текущее фото. [takenAt] — когда сделан снимок (мс с эпохи):
+  /// без него фото не сможет попасть в сортировку по возрасту снимка.
+  Future<void> rateCurrent(int rating, {int? takenAt}) =>
+      _applyRating(rating.clamp(0, 10), takenAt: takenAt);
 
   Future<void> skipCurrent() => _applyRating(0);
 

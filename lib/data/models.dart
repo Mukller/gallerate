@@ -6,14 +6,24 @@ class PhotoRow {
     required this.ratedAt,
     required this.deleted,
     this.sorted = false,
+    this.takenAt,
   });
 
   final String id;
   final int rating;
+
+  /// День, когда выставлена оценка.
   final String day;
+
+  /// Когда выставлена оценка (мс с эпохи).
   final int ratedAt;
+
   final bool deleted;
   final bool sorted;
+
+  /// Когда сделан сам снимок (мс с эпохи). null, если дата съёмки
+  /// неизвестна: у фото, оценённых до появления этого поля, её там нет.
+  final int? takenAt;
 
   factory PhotoRow.fromMap(Map<String, Object?> map) => PhotoRow(
         id: map['id'] as String,
@@ -22,7 +32,19 @@ class PhotoRow {
         ratedAt: map['rated_at'] as int,
         deleted: (map['deleted'] as int) == 1,
         sorted: (map['sorted'] as int? ?? 0) == 1,
+        takenAt: map['taken_at'] as int?,
       );
+}
+
+/// Порядок фото в списках.
+enum PhotoSort {
+  /// По оценке: как раньше — худшие сверху в очереди уборки.
+  rating,
+
+  /// По дате съёмки, от старых к новым. Дата съёмки, а не дата оценки:
+  /// «выкинуть старые кадры» — про возраст снимка, а не про то, когда
+  /// пользователь до него добрался.
+  takenDate,
 }
 
 class SetInfo {

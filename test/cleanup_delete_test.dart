@@ -67,10 +67,80 @@ void main() {
     await settle(tester);
   }
 
+  /// Порядок фото в сетке слева направо, сверху вниз: по координатам,
+  /// а не по номеру элемента — иначе проверка не отличила бы перестановку
+  /// от смены содержимого. Сетка в три колонки, поэтому сравниваем
+  /// сначала строку, потом столбец.
+  List<String> orderOf(WidgetTester tester, List<String> ids) {
+    final positioned = <({String id, double y, double x})>[];
+    for (final id in ids) {
+      final box = tester.getTopLeft(find.byKey(ValueKey('cleanup_photo_$id')));
+      positioned.add((id: id, y: box.dy, x: box.dx));
+    }
+    positioned.sort((a, b) {
+      final byRow = a.y.compareTo(b.y);
+      return byRow != 0 ? byRow : a.x.compareTo(b.x);
+    });
+    return positioned.map((e) => e.id).toList();
+  }
+
   setUp(() {
     store = FakeRatingStore();
     gallery = FakeGallery();
     app = AppState(gallery: gallery, store: store);
+  });
+
+  group('порядок очереди', () {
+    testWidgets('по умолчанию — по оценке', (tester) async {
+      await store.markSeen('bad1', 2);
+      await store.markSeen('bad2', 5);
+
+      await pump(tester);
+
+      expect(find.text('By rating'), findsOneWidget);
+      expect(find.text('By photo date, oldest first'), findsNothing);
+    });
+
+    testWidgets('переключатель меняет порядок на «по дате съёмки»',
+        (tester) async {
+      // Подобраны так, чтобы порядок по оценке и по дате различался:
+      // bad1 — оценка 2 (хуже всех) и свежий снимок; bad2 — оценка 5 и
+      // старый снимок. По оценке первым идёт bad1, по дате — bad2.
+      await store.markSeen('bad1', 2, takenAt: 2000);
+      await store.markSeen('bad2', 5, takenAt: 1000);
+      await pump(tester);
+
+      expect(find.text('By rating'), findsOneWidget);
+      expect(orderOf(tester, ['bad1', 'bad2']), ['bad1', 'bad2'],
+          reason: 'по оценке худший сверху');
+
+      await tester.tap(find.byIcon(Icons.star_outline));
+      await tester.pump();
+      await settle(tester);
+
+      expect(find.text('By photo date, oldest first'), findsOneWidget);
+      expect(find.text('By rating'), findsNothing);
+      expect(orderOf(tester, ['bad1', 'bad2']), ['bad2', 'bad1'],
+          reason: 'по дате старый снимок сверху');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('переключение обратно возвращает «по оценке»', (tester) async {
+      await store.markSeen('bad1', 2, takenAt: 1000);
+      await pump(tester);
+
+      await tester.tap(find.byIcon(Icons.star_outline));
+      await tester.pump();
+      await settle(tester);
+      expect(find.text('By photo date, oldest first'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.event));
+      await tester.pump();
+      await settle(tester);
+
+      expect(find.text('By rating'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('удаление из «Убрать»', () {

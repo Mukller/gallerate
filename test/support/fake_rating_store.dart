@@ -8,8 +8,9 @@ import 'package:gallerate/data/rating_store.dart';
 /// тест зависает намертво. Настоящий SQLite при этом проверяется отдельно
 /// обычными тестами (см. db_test.dart), так что оба уровня закрыты.
 class FakeRatingStore implements RatingStore {
-  /// id -> (оценка, удалён, разложен, день оценки)
-  final Map<String, ({int rating, bool deleted, bool sorted, String day})>
+  /// id -> (оценка, удалён, разложен, день оценки, дата съёмки)
+  final Map<String,
+          ({int rating, bool deleted, bool sorted, String day, int? takenAt})>
       _photos = {};
 
   final List<SetInfo> _sets = [];
@@ -40,10 +41,15 @@ class FakeRatingStore implements RatingStore {
       _mark(assetId, rating, day: day);
 
   @override
-  Future<void> markSeen(String assetId, int rating) =>
-      _mark(assetId, rating, day: defaultDay);
+  Future<void> markSeen(String assetId, int rating, {int? takenAt}) =>
+      _mark(assetId, rating, day: defaultDay, takenAt: takenAt);
 
-  Future<void> _mark(String assetId, int rating, {required String day}) async {
+  Future<void> _mark(
+    String assetId,
+    int rating, {
+    required String day,
+    int? takenAt,
+  }) async {
     markSeenCalls++;
     final prev = _photos[assetId];
     _photos[assetId] = (
@@ -52,6 +58,9 @@ class FakeRatingStore implements RatingStore {
       deleted: prev?.deleted ?? false,
       sorted: prev?.sorted ?? false,
       day: prev?.day ?? day,
+      // Дата съёмки дописывается, только если её прислали: как и в базе,
+      // неизвестная дата не должна затираться null-ом при переоценке.
+      takenAt: takenAt ?? prev?.takenAt,
     );
   }
 
@@ -78,6 +87,7 @@ class FakeRatingStore implements RatingStore {
         deleted: true,
         sorted: p.sorted,
         day: p.day,
+        takenAt: p.takenAt,
       );
     }
   }
@@ -92,6 +102,7 @@ class FakeRatingStore implements RatingStore {
         deleted: p.deleted,
         sorted: true,
         day: p.day,
+        takenAt: p.takenAt,
       );
     }
   }
@@ -115,6 +126,7 @@ class FakeRatingStore implements RatingStore {
         deleted: entry.value.deleted,
         sorted: false,
         day: entry.value.day,
+        takenAt: entry.value.takenAt,
       );
       n++;
     }
@@ -189,6 +201,7 @@ class FakeRatingStore implements RatingStore {
               ratedAt: 1,
               deleted: e.value.deleted,
               sorted: e.value.sorted,
+              takenAt: e.value.takenAt,
             ),
       ];
 
@@ -303,17 +316,48 @@ class FakeRatingStore implements RatingStore {
 
   /// Фото с конкретной оценкой.
   @override
-  Future<List<PhotoRow>> rowsByRating(int rating) async =>
-      _rows.where((r) => r.rating == rating).toList();
+  Future<List<PhotoRow>> rowsByRating(
+    int rating, {
+    PhotoSort sort = PhotoSort.rating,
+  }) async {
+    final rows = _rows.where((r) => r.rating == rating).toList();
+    return _sorted(rows, sort,
+        byRating: (a, b) => b.ratedAt.compareTo(a.ratedAt));
+  }
 
   /// Фото с низкими оценками — очередь уборки.
   @override
-  Future<List<PhotoRow>> lowRatedRows() async {
-    final rows = _rows.where((r) => r.rating >= 1 && r.rating <= 5).toList()
-      ..sort((a, b) {
-        final byRating = a.rating.compareTo(b.rating);
-        return byRating != 0 ? byRating : b.ratedAt.compareTo(a.ratedAt);
-      });
+  Future<List<PhotoRow>> lowRatedRows({
+    PhotoSort sort = PhotoSort.rating,
+  }) async {
+    final rows = _rows.where((r) => r.rating >= 1 && r.rating <= 5).toList();
+    return _sorted(rows, sort, byRating: (a, b) {
+      final byRating = a.rating.compareTo(b.rating);
+      return byRating != 0 ? byRating : b.ratedAt.compareTo(a.ratedAt);
+    });
+  }
+
+  /// Порядок выдачи — тот же, что в базе: фото с неизвестной датой съёмки
+  /// в конец, остальные от старых к новым.
+  List<PhotoRow> _sorted(
+    List<PhotoRow> rows,
+    PhotoSort sort, {
+    required int Function(PhotoRow, PhotoRow) byRating,
+  }) {
+    switch (sort) {
+      case PhotoSort.rating:
+        rows.sort(byRating);
+      case PhotoSort.takenDate:
+        rows.sort((a, b) {
+          final at = a.takenAt;
+          final bt = b.takenAt;
+          if (at == null && bt == null) return byRating(a, b);
+          if (at == null) return 1; // неизвестная дата — в конец
+          if (bt == null) return -1;
+          final byDate = at.compareTo(bt);
+          return byDate != 0 ? byDate : byRating(a, b);
+        });
+    }
     return rows;
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gallerate/data/db.dart';
+import 'package:gallerate/data/models.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Тесты слоя БД на настоящем SQLite (sqflite_common_ffi), без устройства.
@@ -107,6 +108,51 @@ void main() {
     test('снятие несуществующей оценки не падает', () async {
       await AppDb.instance.clearRating('нет-такого');
       expect(await AppDb.instance.totalSeen(), 0);
+    });
+  });
+
+  group('сортировка по дате съёмки', () {
+    test('дата съёмки сохраняется', () async {
+      await AppDb.instance.markSeen('a1', 5, takenAt: 1000);
+
+      final rows = await AppDb.instance.lowRatedRows();
+      expect(rows.first.takenAt, 1000);
+    });
+
+    test('переоценка не затирает известную дату съёмки', () async {
+      await AppDb.instance.markSeen('a1', 5, takenAt: 1000);
+      await AppDb.instance.markSeen('a1', 8);
+
+      final rows = await AppDb.instance.rowsByRating(8);
+      expect(rows.first.takenAt, 1000,
+          reason: 'дата съёмки не должна пропасть при переоценке');
+    });
+
+    test('по дате — от старых к новым', () async {
+      await AppDb.instance.markSeen('new', 5, takenAt: 3000);
+      await AppDb.instance.markSeen('old', 5, takenAt: 1000);
+      await AppDb.instance.markSeen('mid', 5, takenAt: 2000);
+
+      final rows = await AppDb.instance.lowRatedRows(sort: PhotoSort.takenDate);
+      expect(rows.map((r) => r.id).toList(), ['old', 'mid', 'new']);
+    });
+
+    test('фото без даты съёмки уходят в конец', () async {
+      await AppDb.instance.markSeen('withdate', 5, takenAt: 1000);
+      await AppDb.instance.markSeen('nodate', 5);
+
+      final rows = await AppDb.instance.lowRatedRows(sort: PhotoSort.takenDate);
+      expect(rows.first.id, 'withdate');
+      expect(rows.last.id, 'nodate',
+          reason: 'неизвестная дата не должна вставать в случайное место');
+    });
+
+    test('по умолчанию порядок по оценке', () async {
+      await AppDb.instance.markSeen('a', 5, takenAt: 1000);
+      await AppDb.instance.markSeen('b', 2, takenAt: 9000);
+
+      final rows = await AppDb.instance.lowRatedRows();
+      expect(rows.first.id, 'b', reason: 'худшие сверху — как было');
     });
   });
 

@@ -182,6 +182,31 @@ void main() {
       expect(chip10.selected, isTrue);
     });
 
+    testWidgets('переключатель меняет порядок на «по дате съёмки»',
+        (tester) async {
+      final store = FakeRatingStore();
+      final app = AppState(gallery: FakeGallery(), store: store);
+      // Два фото с оценкой 8: одно снято раньше другого.
+      await store.markSeen('old', 8, takenAt: 1000);
+      await store.markSeen('new', 8, takenAt: 5000);
+
+      await tester.pumpWidget(
+        host(app, BestScreen(store: store), TabIndex.best),
+      );
+      await settle(tester);
+
+      expect(find.byIcon(Icons.star_outline), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.star_outline));
+      await tester.pump();
+      await settle(tester);
+
+      // Иконка сменилась — значит, порядок переключился.
+      expect(find.byIcon(Icons.star_outline), findsNothing);
+      expect(find.byIcon(Icons.event), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('нажатие на чип переключает выбор', (tester) async {
       final store = FakeRatingStore();
       final app = AppState(gallery: FakeGallery(), store: store);

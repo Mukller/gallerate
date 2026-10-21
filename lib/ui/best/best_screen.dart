@@ -37,6 +37,9 @@ class _BestScreenState extends State<BestScreen> {
 
   GallerySource get _gallery => widget.gallery ?? GalleryService.instance;
   Map<int, int> _counts = {};
+
+  /// Порядок фото в сетке: по оценке или по дате съёмки (от старых к новым).
+  PhotoSort _sort = PhotoSort.rating;
   int _selected = 10;
   late Future<List<PhotoRow>> _gridFuture;
   int _lastSeenTotal = -1;
@@ -110,15 +113,24 @@ class _BestScreenState extends State<BestScreen> {
       if (mounted) setState(() => _counts = c);
     });
     setState(() {
-      _gridFuture = _store.rowsByRating(_selected);
+      _gridFuture = _store.rowsByRating(_selected, sort: _sort);
     });
     _refreshUnsorted();
+  }
+
+  /// Переключить порядок: по оценке или по дате съёмки.
+  void _toggleSort() {
+    setState(() {
+      _sort =
+          _sort == PhotoSort.rating ? PhotoSort.takenDate : PhotoSort.rating;
+      _gridFuture = _store.rowsByRating(_selected, sort: _sort);
+    });
   }
 
   void _select(int rating) {
     setState(() {
       _selected = rating;
-      _gridFuture = _store.rowsByRating(rating);
+      _gridFuture = _store.rowsByRating(rating, sort: _sort);
     });
   }
 
@@ -225,6 +237,14 @@ class _BestScreenState extends State<BestScreen> {
                 ),
                 const SizedBox(width: 8),
                 const _UnsortedAndActions(),
+                IconButton(
+                  onPressed: _toggleSort,
+                  icon: Icon(_sort == PhotoSort.takenDate
+                      ? Icons.event
+                      : Icons.star_outline),
+                  tooltip: context.tr('sortToggle'),
+                  visualDensity: VisualDensity.compact,
+                ),
               ],
             ),
           ),

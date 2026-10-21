@@ -237,7 +237,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   : SwipeCardDeck(
                       key: _deckKey,
                       assets: window,
-                      onRated: (rating) => app.rateCurrent(rating),
+                      onRated: (rating) => app.rateCurrent(
+                        rating,
+                        // Дата съёмки нужна, чтобы потом сортировать
+                        // «Лучшие» и очередь уборки по возрасту снимка.
+                        takenAt: _takenAtOf(set),
+                      ),
                       onSkip: () => app.skipCurrent(),
                     ),
             ),
@@ -277,6 +282,15 @@ class _SwipeScreenState extends State<SwipeScreen> {
         ],
       ),
     );
+  }
+
+  /// Когда сделан текущий снимок (мс с эпохи), если ассет уже загружен.
+  int? _takenAtOf(SetInfo set) {
+    final id = set.currentId;
+    if (id == null) return null;
+    final asset = _assetCache[id];
+    if (asset == null) return null;
+    return asset.createDateTime.millisecondsSinceEpoch;
   }
 
   void _openSettings(BuildContext context) {
